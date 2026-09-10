@@ -1,0 +1,25 @@
+CREATE TABLE IF NOT EXISTS config.carrier_service (
+    client_id                varchar(30) NOT NULL,
+    carrier_id               varchar(30) NOT NULL,
+    service_level            varchar(50) NOT NULL,
+    description              varchar(120),
+    dispatch_method          varchar(30),
+    active                   boolean NOT NULL DEFAULT true,
+    max_weight_kg            numeric(12,3),
+    max_length_cm            numeric(12,3),
+    max_width_cm             numeric(12,3),
+    max_height_cm            numeric(12,3),
+    max_volume_cm3           numeric(18,3),
+    volumetric_divisor       numeric(12,3),
+    max_parcels              integer,
+    base_cost                numeric(12,2),
+    cost_per_kg              numeric(12,4),
+    requires_manual_approval boolean NOT NULL DEFAULT false,
+    live_goods_allowed       boolean NOT NULL DEFAULT false,
+    sort_sequence            integer NOT NULL DEFAULT 100,
+    created_dstamp           timestamptz NOT NULL DEFAULT now(),
+    last_updated_dstamp      timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (client_id, carrier_id, service_level),
+    FOREIGN KEY (client_id, carrier_id)
+      REFERENCES config.carrier(client_id, carrier_id)
+);

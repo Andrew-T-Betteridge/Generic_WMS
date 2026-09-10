@@ -1,0 +1,2 @@
+-- SKU_KIT_HEADER
+-- Definition pending review/conversion from existing WMS source.

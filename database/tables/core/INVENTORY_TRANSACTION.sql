@@ -1,0 +1,2 @@
+-- INVENTORY_TRANSACTION
+-- Definition pending review/conversion from existing WMS source.

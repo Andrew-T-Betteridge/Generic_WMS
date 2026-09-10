@@ -1,0 +1,2 @@
+-- LOCATION
+-- Definition pending review/conversion from existing WMS source.

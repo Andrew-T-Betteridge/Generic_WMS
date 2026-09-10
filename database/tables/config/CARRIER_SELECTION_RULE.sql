@@ -1,0 +1,25 @@
+CREATE TABLE IF NOT EXISTS config.carrier_selection_rule (
+    rule_id             bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    client_id           varchar(30) NOT NULL REFERENCES core.client(client_id),
+    rule_name           varchar(100) NOT NULL,
+    priority            integer NOT NULL DEFAULT 100,
+    active              boolean NOT NULL DEFAULT true,
+    carrier_id          varchar(30),
+    service_level       varchar(50),
+    min_weight_kg       numeric(12,3),
+    max_weight_kg       numeric(12,3),
+    min_volume_cm3      numeric(18,3),
+    max_volume_cm3      numeric(18,3),
+    max_item_length_cm  numeric(12,3),
+    max_order_value     numeric(14,2),
+    min_order_value     numeric(14,2),
+    dispatch_method     varchar(30),
+    delivery_class      varchar(30),
+    country_code        varchar(3),
+    rule_expression     jsonb,
+    stop_on_match       boolean NOT NULL DEFAULT true,
+    created_dstamp      timestamptz NOT NULL DEFAULT now(),
+    last_updated_dstamp timestamptz NOT NULL DEFAULT now(),
+    FOREIGN KEY (client_id, carrier_id, service_level)
+      REFERENCES config.carrier_service(client_id, carrier_id, service_level)
+);

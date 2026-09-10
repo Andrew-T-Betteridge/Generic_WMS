@@ -1,0 +1,14 @@
+-- Aggregated migration marker.
+-- Prefer applying object files through a migration runner once tooling is added.
+-- This file documents the intended order only.
+
+-- 1. database/schemas/*
+-- 2. database/tables/core/CLIENT.sql
+-- 3. database/tables/config/CARRIER.sql
+-- 4. database/tables/config/CARRIER_SERVICE.sql
+-- 5. database/tables/config/CARRIER_SELECTION_RULE.sql
+-- 6. database/tables/config/MERGE_RULE.sql
+-- 7. database/tables/iface/INTERFACE_ERROR.sql
+-- 8. database/tables/audit/PROCESSING_LOG.sql
+-- 9. database/indexes/001_config_indexes.sql
+-- 10. database/seed/001_client.sql
