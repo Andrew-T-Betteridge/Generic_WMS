@@ -25,5 +25,8 @@ if ($LASTEXITCODE -ne 0) { throw "Carrier selection build failed." }
 & "$PSScriptRoot\apply-fulfilment-holds.ps1" -Database $Database -DbUser $DbUser
 if ($LASTEXITCODE -ne 0) { throw "Fulfilment holds build failed." }
 
+& "$PSScriptRoot\apply-merge-consolidation.ps1" -Database $Database -DbUser $DbUser
+if ($LASTEXITCODE -ne 0) { throw "Merge / consolidation build failed." }
+
 Write-Host ""
 Write-Host "Full Generic WMS database build completed successfully."

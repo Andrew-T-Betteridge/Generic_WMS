@@ -1,0 +1,89 @@
+\set ON_ERROR_STOP on
+BEGIN;
+
+INSERT INTO core.CLIENT (CLIENT_ID,DESCRIPTION,ACTIVE)
+VALUES ('MERGETEST','Merge Test',TRUE)
+ON CONFLICT (CLIENT_ID) DO NOTHING;
+
+INSERT INTO core.ORDER_HEADER (
+    CLIENT_ID,ORDER_ID,ORDER_DATE,ORDER_VALUE,INV_CURRENCY,
+    FREE_DELIVERY,FULFILMENT_PREFERENCE
+)
+VALUES (
+    'MERGETEST','MERGE-ORDER-1',now(),30,'GBP','N','CONSOLIDATE'
+);
+
+INSERT INTO core.ORDER_CONTAINER (
+    CLIENT_ID,ORDER_ID,CONTAINER_ID,STATUS,WEIGHT,VOLUME,
+    DELIVERY_CLASS,FULFILMENT_METHOD,HOLD_STATUS
+)
+VALUES
+    ('MERGETEST','MERGE-ORDER-1','MERGE-A','PACKED',1,1000,
+     'STANDARD','CARRIER','NONE'),
+    ('MERGETEST','MERGE-ORDER-1','MERGE-B','PACKED',2,2000,
+     'STANDARD','CARRIER','NONE');
+
+DO $$
+DECLARE
+    v_allowed BOOLEAN;
+BEGIN
+    SELECT RESULT_ALLOWED
+    INTO v_allowed
+    FROM core.EVALUATE_CONTAINER_MERGE(
+        'MERGETEST','MERGE-A','MERGE-B'
+    );
+
+    IF NOT v_allowed THEN
+        RAISE EXCEPTION
+            'Compatible same-class containers should be mergeable by safe default.';
+    END IF;
+END
+$$;
+
+SELECT *
+FROM core.MERGE_CONTAINERS(
+    'MERGETEST','MERGE-A','MERGE-B','TEST'
+);
+
+DO $$
+DECLARE
+    v RECORD;
+BEGIN
+    SELECT * INTO v
+    FROM core.ORDER_CONTAINER
+    WHERE CLIENT_ID='MERGETEST'
+      AND CONTAINER_ID='MERGE-A';
+
+    IF v.WEIGHT<>3 OR v.VOLUME<>3000 THEN
+        RAISE EXCEPTION
+            'Target totals are wrong: weight %, volume %',
+            v.WEIGHT,v.VOLUME;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM core.ORDER_CONTAINER
+        WHERE CLIENT_ID='MERGETEST'
+          AND CONTAINER_ID='MERGE-B'
+          AND STATUS='MERGED'
+          AND MERGED_INTO_CONTAINER_ID='MERGE-A'
+    ) THEN
+        RAISE EXCEPTION
+            'Source container was not marked MERGED.';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM audit.RULE_DECISION_LOG
+        WHERE CLIENT_ID='MERGETEST'
+          AND ENGINE_NAME='CONTAINER_MERGE'
+          AND ENTITY_ID='MERGE-B'
+          AND DECISION='MERGED'
+    ) THEN
+        RAISE EXCEPTION
+            'Successful merge was not audited.';
+    END IF;
+END
+$$;
+
+ROLLBACK;

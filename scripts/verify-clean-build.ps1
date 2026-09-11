@@ -36,8 +36,11 @@ try {
     & "$PSScriptRoot\test-fulfilment-holds.ps1" -Database $TestDatabase -DbUser $DbUser
     if ($LASTEXITCODE -ne 0) { throw "Fulfilment hold tests failed." }
 
+    & "$PSScriptRoot\test-merge-consolidation.ps1" -Database $TestDatabase -DbUser $DbUser
+    if ($LASTEXITCODE -ne 0) { throw "Merge / consolidation tests failed." }
+
     Write-Host ""
-    Write-Host "CLEAN BUILD + INTERFACE + ALLOCATION + WAREHOUSE EXECUTION + CARRIER SELECTION + FULFILMENT HOLDS TESTS PASSED."
+    Write-Host "CLEAN BUILD + INTERFACE + ALLOCATION + WAREHOUSE EXECUTION + CARRIER SELECTION + FULFILMENT HOLDS + MERGE CONSOLIDATION TESTS PASSED."
 }
 finally {
     if (-not $KeepDatabase) {

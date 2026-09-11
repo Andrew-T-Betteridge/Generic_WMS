@@ -1,18 +1,21 @@
-CREATE TABLE IF NOT EXISTS config.merge_rule (
-    rule_id                  bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    client_id                varchar(30) NOT NULL REFERENCES core.client(client_id),
-    rule_name                varchar(100) NOT NULL,
-    priority                 integer NOT NULL DEFAULT 100,
-    active                   boolean NOT NULL DEFAULT true,
-    same_customer_reqd       boolean NOT NULL DEFAULT true,
-    same_address_reqd        boolean NOT NULL DEFAULT true,
-    same_dispatch_reqd       boolean NOT NULL DEFAULT true,
-    same_service_reqd        boolean NOT NULL DEFAULT false,
-    same_delivery_date_reqd  boolean NOT NULL DEFAULT false,
-    max_combined_weight_kg   numeric(12,3),
-    max_combined_volume_cm3  numeric(18,3),
-    rule_expression          jsonb,
-    stop_on_match            boolean NOT NULL DEFAULT false,
-    created_dstamp           timestamptz NOT NULL DEFAULT now(),
-    last_updated_dstamp      timestamptz NOT NULL DEFAULT now()
+CREATE TABLE IF NOT EXISTS config.MERGE_RULE (
+    RULE_ID BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    CLIENT_ID VARCHAR(30) NOT NULL,
+    RULE_NAME VARCHAR(100) NOT NULL,
+    PRIORITY INTEGER NOT NULL DEFAULT 100,
+    ACTIVE BOOLEAN NOT NULL DEFAULT TRUE,
+    DECISION VARCHAR(10) NOT NULL DEFAULT 'ALLOW',
+    STOP_ON_MATCH BOOLEAN NOT NULL DEFAULT TRUE,
+    CREATED_DSTAMP TIMESTAMPTZ NOT NULL DEFAULT now(),
+    LAST_UPDATE_DSTAMP TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT FK_MERGE_RULE_CLIENT
+        FOREIGN KEY (CLIENT_ID)
+        REFERENCES core.CLIENT (CLIENT_ID),
+    CONSTRAINT CK_MERGE_RULE_DECISION
+        CHECK (DECISION IN ('ALLOW','DENY')),
+    CONSTRAINT UQ_MERGE_RULE_NAME
+        UNIQUE (CLIENT_ID, RULE_NAME)
 );
+
+COMMENT ON TABLE config.MERGE_RULE IS
+'Ordered, client-specific rules controlling whether two compatible containers may be consolidated.';
