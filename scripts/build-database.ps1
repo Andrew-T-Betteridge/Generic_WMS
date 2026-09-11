@@ -3,15 +3,27 @@ param(
     [string]$DbUser = "postgres"
 )
 $ErrorActionPreference = "Stop"
+
 & "$PSScriptRoot\apply-foundation.ps1" -Database $Database -DbUser $DbUser
 if ($LASTEXITCODE -ne 0) { throw "Foundation build failed." }
+
 & "$PSScriptRoot\apply-core.ps1" -Database $Database -DbUser $DbUser
 if ($LASTEXITCODE -ne 0) { throw "Core build failed." }
+
 & "$PSScriptRoot\apply-supporting-tables.ps1" -Database $Database -DbUser $DbUser
 if ($LASTEXITCODE -ne 0) { throw "Supporting build failed." }
+
 & "$PSScriptRoot\apply-allocation.ps1" -Database $Database -DbUser $DbUser
 if ($LASTEXITCODE -ne 0) { throw "Allocation build failed." }
+
 & "$PSScriptRoot\apply-warehouse-execution.ps1" -Database $Database -DbUser $DbUser
 if ($LASTEXITCODE -ne 0) { throw "Warehouse execution build failed." }
+
+& "$PSScriptRoot\apply-carrier-selection.ps1" -Database $Database -DbUser $DbUser
+if ($LASTEXITCODE -ne 0) { throw "Carrier selection build failed." }
+
+& "$PSScriptRoot\apply-fulfilment-holds.ps1" -Database $Database -DbUser $DbUser
+if ($LASTEXITCODE -ne 0) { throw "Fulfilment holds build failed." }
+
 Write-Host ""
 Write-Host "Full Generic WMS database build completed successfully."

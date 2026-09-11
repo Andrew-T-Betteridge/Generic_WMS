@@ -1,40 +1,32 @@
-# Allocation 0007 canonical clean-build fix
+# Carrier Selection smoke-test location hotfix
 
-This replaces:
+The clean-build failure was caused by the smoke test depending on an existing
+`core.LOCATION`.
 
-`database/migrations/0007_add_allocation.sql`
+Earlier test fixtures do not persist because those tests run inside
+`BEGIN / ROLLBACK`, so a clean database can legitimately contain no LOCATION
+rows when carrier test 006 starts.
 
-## What happened
+This replacement makes test 006 fully self-contained by inserting:
 
-The previous view-dependency hotfix correctly stopped PostgreSQL from
-re-running an unnecessary `ALTER COLUMN ... TYPE BIGINT`, but its
-`CREATE TABLE core.ALLOCATION` definition did not match the existing
-canonical file:
+`CARR-TEST-LOC`
 
-`database/tables/core/ALLOCATION.sql`
+with all mandatory LOCATION fields before inserting SHIPPING_MANIFEST.
 
-A persistent upgraded database could hide that mismatch because the table
-already existed. A genuinely clean database exposed it when
-`ALLOCATION.sql` tried to comment `ALLOCATION_DSTAMP`.
+No production schema/function change is required.
 
-This replacement fixes both issues:
+## Apply
 
-1. KEY type conversion only runs when genuinely required.
-2. `core.ALLOCATION` is created with the original canonical Allocation V1
-   columns, including `ALLOCATION_DSTAMP`.
-3. Warehouse Execution migration `0008_warehouse_execution_v1.sql` remains
-   responsible for adding `QTY_PICKED`, `QTY_RELEASED`, `STATUS`, etc.
+Extract over the repository root and replace:
 
-## Run
+`database/tests/006_carrier_selection_smoke_test.sql`
 
-Extract this ZIP over the Generic WMS repository root and replace the
-existing migration file.
-
-Your temporary clean-build database was already dropped by the failed test,
-so simply run:
+Then rerun:
 
 ```powershell
 .\scripts\verify-clean-build.ps1
 ```
 
-There is no need to rebuild `fulfilment_dev` first.
+You do not need to rerun `build-database.ps1` first because the previous
+production build already completed; this failure occurred only in the temporary
+clean-build test database.
