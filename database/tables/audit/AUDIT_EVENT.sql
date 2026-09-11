@@ -1,0 +1,12 @@
+CREATE TABLE IF NOT EXISTS audit.AUDIT_EVENT (
+    AUDIT_ID bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    CLIENT_ID varchar(30),
+    ENTITY_TYPE varchar(50) NOT NULL,
+    ENTITY_ID varchar(120) NOT NULL,
+    ACTION varchar(40) NOT NULL,
+    CHANGED_BY varchar(120),
+    REASON text,
+    BEFORE_DATA jsonb,
+    AFTER_DATA jsonb,
+    CREATED_DSTAMP timestamptz NOT NULL DEFAULT now()
+);

@@ -1,0 +1,23 @@
+CREATE TABLE IF NOT EXISTS interface.ORDER_HEADER_IF (
+    INTERFACE_ID         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    CLIENT_ID            varchar(10) NOT NULL,
+    SOURCE_SYSTEM        varchar(50) NOT NULL,
+    SOURCE_ORDER_ID      varchar(100) NOT NULL,
+    ORDER_ID             varchar(20),
+    CUSTOMER_ID          varchar(15),
+    ORDER_DATE           timestamptz NOT NULL DEFAULT now(),
+    SHIP_BY_DATE         timestamptz,
+    DELIVER_BY_DATE      timestamptz,
+    DISPATCH_METHOD      varchar(40),
+    SERVICE_LEVEL        varchar(40),
+    ADDRESS_ID           varchar(50),
+    ORDER_VALUE          numeric(12,3),
+    CURRENCY             varchar(3),
+    PROCESS_STATUS       varchar(30) NOT NULL DEFAULT 'NEW',
+    ERROR_CODE           varchar(50),
+    ERROR_TEXT           text,
+    CREATED_DSTAMP       timestamptz NOT NULL DEFAULT now(),
+    PROCESSED_DSTAMP     timestamptz,
+    UNIQUE (CLIENT_ID, SOURCE_SYSTEM, SOURCE_ORDER_ID),
+    FOREIGN KEY (CLIENT_ID) REFERENCES core.CLIENT(CLIENT_ID)
+);

@@ -1,2 +1,0 @@
--- ORDER_HEADER_IF
--- Definition pending review/conversion from existing WMS source.

@@ -1,0 +1,13 @@
+CREATE TABLE IF NOT EXISTS core.SUPPLIER (
+    SUPPLIER_ID varchar(50) PRIMARY KEY,
+    CLIENT_ID varchar(30) NOT NULL REFERENCES core.CLIENT(CLIENT_ID),
+    NAME varchar(150) NOT NULL,
+    ADDRESS_ID varchar(50),
+    CONTACT varchar(120),
+    CONTACT_EMAIL varchar(180),
+    CONTACT_PHONE varchar(50),
+    ACTIVE boolean NOT NULL DEFAULT true,
+    NOTES text,
+    CREATED_DSTAMP timestamptz NOT NULL DEFAULT now(),
+    LAST_UPDATED_DSTAMP timestamptz NOT NULL DEFAULT now()
+);
