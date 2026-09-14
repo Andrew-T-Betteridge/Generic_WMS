@@ -1,30 +1,28 @@
-# DYNETIC WMS Stripe E2E psql user fix
+# DYNETIC WMS Production Readiness V1
 
-The Stripe E2E script was invoking `psql` without `-U`, so PostgreSQL defaulted to the
-current Windows account (`atbet`) instead of the configured database user.
+This patch takes the next several steps after the successful `fulfilment_prod` smoke test.
 
-This patch changes the script to read and use:
+Adds:
 
-- `DB_HOST`
-- `DB_PORT`
-- `DB_USER`
+- `config/environments/production.api.env.example`
+- `scripts/validate-prod-api-config.ps1`
+- `scripts/start-prod-api-local.ps1`
+- `scripts/test-prod-api-readonly.ps1`
+- `scripts/backup-prod.ps1`
+- `scripts/verify-prod-readiness.ps1`
+- `scripts/create-release-tag.ps1`
+- `docs/PRODUCTION_READINESS_0_2_0.md`
+- `docs/GITIGNORE_PRODUCTION_ADDITIONS.txt`
 
-from `apps/api/.env`.
+It does **not** enable live traffic or live Stripe payments.
 
-With the current setup this means the command connects as the configured PostgreSQL user
-and can use the existing `pgpass.conf` entry, so it should not prompt for a password.
+Recommended immediate sequence:
 
-## Apply
+1. Extract over the repository.
+2. Add the two recommended `.gitignore` entries.
+3. Run `.\scripts\backup-prod.ps1`.
+4. Run `.\scripts\verify-prod-readiness.ps1`.
+5. Commit/push this production baseline.
+6. Create/push `dynetic-wms-v0.2.0`.
 
-Extract over:
-
-`C:\Users\atbet\OneDrive\Repository\Business Docs\Generic WMS`
-
-Then, from the repository root:
-
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-.\scripts\test-stripe-e2e.ps1
-```
-
-Keep the API and Stripe listener running in their separate windows.
+OIDC and live Stripe values can remain unconfigured until the external production services are deliberately enabled.
