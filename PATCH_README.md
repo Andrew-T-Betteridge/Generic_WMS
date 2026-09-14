@@ -1,26 +1,30 @@
-# DYNETIC WMS regression runner PowerShell fix
+# DYNETIC WMS Stripe E2E psql user fix
 
-The regression tests themselves passed, including:
+The Stripe E2E script was invoking `psql` without `-U`, so PostgreSQL defaulted to the
+current Windows account (`atbet`) instead of the configured database user.
 
-- Payment failure/expiry
-- Payment security/idempotency
+This patch changes the script to read and use:
 
-The final summary output then failed because Windows PowerShell 5.1 does not support using
-`if (...) { ... } else { ... }` directly as an expression inside `Write-Host (...)`.
+- `DB_HOST`
+- `DB_PORT`
+- `DB_USER`
 
-This patch changes the summary code to assign the result to `$httpStatus` first and then
-prints it.
+from `apps/api/.env`.
 
-No database or application logic changes are included.
+With the current setup this means the command connects as the configured PostgreSQL user
+and can use the existing `pgpass.conf` entry, so it should not prompt for a password.
 
 ## Apply
 
-Extract over the repository root:
+Extract over:
 
 `C:\Users\atbet\OneDrive\Repository\Business Docs\Generic WMS`
 
-Then rerun:
+Then, from the repository root:
 
 ```powershell
-.\scripts\test-full-regression.ps1
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\scripts\test-stripe-e2e.ps1
 ```
+
+Keep the API and Stripe listener running in their separate windows.
