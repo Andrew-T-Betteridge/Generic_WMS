@@ -1,0 +1,7 @@
+CREATE OR REPLACE FUNCTION api.GET_PRODUCT_REVIEWS(p_client_id VARCHAR,p_slug VARCHAR)
+RETURNS JSONB LANGUAGE sql STABLE AS $$
+WITH p AS (SELECT PRODUCT_ID FROM core.PRODUCT WHERE CLIENT_ID=p_client_id AND SLUG=p_slug AND ACTIVE=TRUE), r AS (
+ SELECT pr.* FROM core.PRODUCT_REVIEW pr JOIN p ON p.PRODUCT_ID=pr.PRODUCT_ID WHERE pr.CLIENT_ID=p_client_id AND pr.STATUS='APPROVED'
+)
+SELECT jsonb_build_object('averageRating',ROUND(AVG(RATING)::numeric,2),'reviewCount',COUNT(*),'reviews',COALESCE(jsonb_agg(jsonb_build_object('reviewId',REVIEW_ID,'displayName',DISPLAY_NAME,'rating',RATING,'title',REVIEW_TITLE,'text',REVIEW_TEXT,'verifiedPurchase',VERIFIED_PURCHASE,'publishedAt',PUBLISHED_DSTAMP) ORDER BY PUBLISHED_DSTAMP DESC) FILTER(WHERE REVIEW_ID IS NOT NULL),'[]'::jsonb)) FROM r;
+$$;

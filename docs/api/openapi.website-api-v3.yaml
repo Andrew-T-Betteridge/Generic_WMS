@@ -1,0 +1,128 @@
+openapi: 3.1.0
+info:
+  title: DYNETIC WMS Website API
+  version: 0.2.0
+  description: >
+    Customer-facing and administration boundary for DYNETIC WMS.
+    PostgreSQL remains the source of truth. UI clients must not write operational tables directly.
+servers:
+  - url: http://localhost:3001
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    guestOrderToken:
+      type: apiKey
+      in: header
+      name: X-Order-Access-Token
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+paths:
+  /health:
+    get:
+      security: []
+      responses:
+        "200": { description: DYNETIC WMS API health/version }
+  /api/system/version:
+    get:
+      security: []
+      responses:
+        "200": { description: Current DYNETIC WMS version }
+  /api/catalog/categories:
+    get:
+      security: []
+      responses: { "200": { description: Dynamic category hierarchy } }
+  /api/catalog/products:
+    get:
+      security: []
+      responses: { "200": { description: Catalogue } }
+  /api/catalog/search:
+    get:
+      security: []
+      responses: { "200": { description: Catalogue search } }
+  /api/catalog/products/{slug}:
+    get:
+      security: []
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+      responses: { "200": { description: Product }, "404": { description: Not found } }
+  /api/checkout/validate:
+    post:
+      security: []
+      responses: { "200": { description: Valid basket }, "400": { description: Invalid basket } }
+  /api/checkout/quote:
+    post:
+      security: []
+      responses: { "200": { description: Authoritative checkout quote } }
+  /api/orders:
+    post:
+      description: Guest or authenticated order submission. Guest response includes a signed orderAccessToken.
+      security: [{}, {bearerAuth: []}]
+      responses: { "201": { description: Order accepted } }
+  /api/orders/{orderId}:
+    get:
+      description: Account owners use bearer auth; guests use the signed X-Order-Access-Token returned at order creation.
+      security: [{bearerAuth: []}, {guestOrderToken: []}]
+      responses: { "200": { description: Safe order status }, "401": { description: Missing guest token }, "403": { description: Not owned } }
+  /api/account:
+    get:
+      security: [{bearerAuth: []}]
+      responses: { "200": { description: Current account } }
+  /api/account/addresses:
+    get:
+      security: [{bearerAuth: []}]
+      responses: { "200": { description: Saved addresses } }
+    post:
+      security: [{bearerAuth: []}]
+      responses: { "201": { description: Address saved } }
+  /api/account/favourites:
+    get:
+      security: [{bearerAuth: []}]
+      responses: { "200": { description: Favourites } }
+  /api/account/orders:
+    get:
+      security: [{bearerAuth: []}]
+      responses: { "200": { description: Account order history } }
+  /api/account/interests:
+    get:
+      security: [{bearerAuth: []}]
+      responses: { "200": { description: Waitlists and growing-stock interests } }
+  /api/account/reservations:
+    get:
+      security: [{bearerAuth: []}]
+      responses: { "200": { description: Current/historic reservations } }
+  /api/payments/prepare:
+    post:
+      description: DYNETIC WMS calculates amount from the owned order/reservation then creates a Stripe PaymentIntent.
+      security: [{}, {bearerAuth: []}]
+      responses: { "201": { description: Stripe client secret / payment reference }, "400": { description: Invalid/unowned reference } }
+  /api/payments/{paymentId}:
+    get:
+      security: [{bearerAuth: []}]
+      responses: { "200": { description: Payment status } }
+  /api/webhooks/stripe:
+    post:
+      security: []
+      description: Stripe-signed webhook. This is the authoritative route that changes payment/order payment state.
+      responses: { "200": { description: Event accepted }, "400": { description: Invalid signature } }
+  /api/admin/affiliate/demand:
+    get:
+      security: [{bearerAuth: []}]
+      responses: { "200": { description: Admin analytics }, "403": { description: Admin role required } }
+  /api/admin/reservations/expire:
+    post:
+      security: [{bearerAuth: []}]
+      responses: { "200": { description: Expired reservations released } }
+  /api/admin/payments/{paymentId}/refund:
+    post:
+      security: [{bearerAuth: []}]
+      responses: { "202": { description: Stripe refund requested } }

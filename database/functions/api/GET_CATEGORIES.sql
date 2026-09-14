@@ -1,0 +1,8 @@
+CREATE OR REPLACE FUNCTION api.GET_CATEGORIES(p_client_id VARCHAR)
+RETURNS JSONB LANGUAGE sql STABLE AS $$
+SELECT COALESCE(jsonb_agg(jsonb_build_object(
+ 'code',c.CATEGORY_CODE,'parentCode',c.PARENT_CATEGORY_CODE,'name',c.CATEGORY_NAME,
+ 'slug',c.SLUG,'description',c.DESCRIPTION,'sortSequence',c.SORT_SEQUENCE
+) ORDER BY c.SORT_SEQUENCE,c.CATEGORY_NAME),'[]'::jsonb)
+FROM core.PRODUCT_CATEGORY c WHERE c.CLIENT_ID=p_client_id AND c.ACTIVE=TRUE;
+$$;

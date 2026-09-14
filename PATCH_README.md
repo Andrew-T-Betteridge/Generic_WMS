@@ -1,29 +1,26 @@
-# Merge evaluate record-alias hotfix
+# DYNETIC WMS regression runner PowerShell fix
 
-The error:
+The regression tests themselves passed, including:
 
-`record "oh" is not assigned yet`
+- Payment failure/expiry
+- Payment security/idempotency
 
-was caused by a PL/pgSQL variable named `oh` colliding with the SQL table alias
-`oh` used for `core.ORDER_HEADER`.
+The final summary output then failed because Windows PowerShell 5.1 does not support using
+`if (...) { ... } else { ... }` directly as an expression inside `Write-Host (...)`.
 
-PostgreSQL resolved `oh.CUSTOMER_ID` as the unassigned PL/pgSQL RECORD variable
-instead of the SQL alias.
+This patch changes the summary code to assign the result to `$httpStatus` first and then
+prints it.
 
-This replacement:
-
-- removes the unused `oh RECORD` declaration;
-- renames the SQL alias to `hdr`;
-- changes no merge behaviour.
+No database or application logic changes are included.
 
 ## Apply
 
-Extract over the repository root and replace:
+Extract over the repository root:
 
-`database/functions/core/EVALUATE_CONTAINER_MERGE.sql`
+`C:\Users\atbet\OneDrive\Repository\Business Docs\Generic WMS`
 
-Then rerun only the clean verification:
+Then rerun:
 
 ```powershell
-.\scripts\verify-clean-build.ps1
+.\scripts\test-full-regression.ps1
 ```

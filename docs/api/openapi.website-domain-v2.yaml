@@ -1,0 +1,130 @@
+openapi: 3.1.0
+info:
+  title: Generic WMS Website API
+  version: 2.0.0
+  description: FINatics website contract backed by the generic WMS/ecommerce domain.
+servers:
+  - url: http://localhost:3001
+paths:
+  /health:
+    get: {responses: {'200': {description: OK}}}
+  /api/catalog/products:
+    get:
+      parameters:
+        - {name: category, in: query, schema: {type: string}}
+      responses: {'200': {description: Catalogue}}
+  /api/catalog/search:
+    get:
+      parameters:
+        - {name: q, in: query, schema: {type: string}}
+        - {name: category, in: query, schema: {type: string}}
+        - {name: availability, in: query, schema: {type: string, enum: [AVAILABLE, GROWING, COMING_SOON, OUT_OF_STOCK]}}
+        - {name: saleType, in: query, schema: {type: string}}
+      responses: {'200': {description: Search results}}
+  /api/catalog/products/{slug}:
+    get:
+      parameters: [{name: slug, in: path, required: true, schema: {type: string}}]
+      responses: {'200': {description: Product}, '404': {description: Not found}}
+  /api/catalog/products/{slug}/media:
+    get:
+      parameters: [{name: slug, in: path, required: true, schema: {type: string}}]
+      responses: {'200': {description: Product media}}
+  /api/catalog/products/{slug}/reviews:
+    get:
+      parameters: [{name: slug, in: path, required: true, schema: {type: string}}]
+      responses: {'200': {description: Approved reviews}}
+    post:
+      parameters: [{name: slug, in: path, required: true, schema: {type: string}}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ReviewRequest'}}}}
+      responses: {'202': {description: Submitted for moderation}}
+  /api/checkout/validate:
+    post:
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/Basket'}}}}
+      responses: {'200': {description: Valid}, '400': {description: Invalid}}
+  /api/delivery/options:
+    post:
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CheckoutPayload'}}}}
+      responses: {'200': {description: Eligible fulfilment options}}
+  /api/checkout/quote:
+    post:
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CheckoutPayload'}}}}
+      responses: {'200': {description: Quote}}
+  /api/promotions/validate:
+    post:
+      responses: {'200': {description: Promotion validation}}
+  /api/gift-cards/balance:
+    post:
+      responses: {'200': {description: Gift card status/balance}, '404': {description: Not found}}
+  /api/interests:
+    post:
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/InterestRequest'}}}}
+      responses: {'201': {description: Waitlist/growing-stock interest created}}
+  /api/reservations:
+    post:
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ReservationRequest'}}}}
+      responses: {'201': {description: Stock reserved}, '409': {description: Reservation failed}}
+  /api/reservations/{reservationId}:
+    get:
+      parameters: [{name: reservationId, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses: {'200': {description: Reservation}}
+    delete:
+      parameters: [{name: reservationId, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses: {'200': {description: Reservation cancelled/released}}
+  /api/affiliate/click:
+    post:
+      responses: {'200': {description: Click recorded and destination returned}}
+  /api/preferences:
+    post:
+      responses: {'200': {description: Consent/preference saved}}
+  /api/payments/prepare:
+    post:
+      responses: {'201': {description: Provider-neutral payment transaction prepared}}
+  /api/orders:
+    post:
+      responses: {'201': {description: WMS order accepted}}
+  /api/orders/{orderId}:
+    get:
+      parameters: [{name: orderId, in: path, required: true, schema: {type: string}}]
+      responses: {'200': {description: Order status}}
+components:
+  schemas:
+    BasketItem:
+      type: object
+      required: [sku_id, qty]
+      properties: {sku_id: {type: string}, qty: {type: number, exclusiveMinimum: 0}}
+    Basket:
+      type: object
+      properties: {items: {type: array, items: {$ref: '#/components/schemas/BasketItem'}}}
+    CheckoutPayload:
+      allOf:
+        - {$ref: '#/components/schemas/Basket'}
+        - type: object
+          properties:
+            promoCode: {type: string}
+            deliveryAddress:
+              type: object
+              properties: {postcode: {type: string}, country: {type: string}}
+    InterestRequest:
+      type: object
+      required: [interestType, productId, email]
+      properties:
+        interestType: {type: string, enum: [WAITLIST, GROWING_STOCK]}
+        productId: {type: string}
+        skuId: {type: string}
+        requestedQty: {type: number}
+        email: {type: string, format: email}
+        phone: {type: string}
+        preferredChannel: {type: string, enum: [EMAIL, SMS, WHATSAPP]}
+    ReservationRequest:
+      type: object
+      required: [customer, items]
+      properties:
+        idempotencyKey: {type: string}
+        holdMinutes: {type: integer, minimum: 1, maximum: 10080, default: 2880}
+        fulfilmentMethod: {type: string}
+        customer: {type: object, required: [email], properties: {name: {type: string}, email: {type: string, format: email}, phone: {type: string}}}
+        items: {type: array, items: {$ref: '#/components/schemas/BasketItem'}}
+    ReviewRequest:
+      type: object
+      required: [email, displayName, rating]
+      properties: {email: {type: string, format: email}, displayName: {type: string}, rating: {type: integer, minimum: 1, maximum: 5}, title: {type: string}, text: {type: string}, skuId: {type: string}}
