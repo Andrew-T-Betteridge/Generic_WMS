@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@auth0/auth0-react": "^2.25.0",
     "@vitejs/plugin-react": "^4.3.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

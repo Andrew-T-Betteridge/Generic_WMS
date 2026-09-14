@@ -11,3 +11,10 @@ coverage/
 .DS_Store
 Thumbs.db
 database/local-data/
+
+# DYNETIC WMS local production/runtime data
+backups/
+config/environments/production.api.env
+config/environments/test.auth0.env
+
+apps/storefront/.env.local

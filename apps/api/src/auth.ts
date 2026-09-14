@@ -53,8 +53,13 @@ export async function optionalIdentity(req: FastifyRequest, clientId: string): P
 
   const p = verified.payload as Record<string, unknown>;
   const subject = String(p.sub ?? "");
-  const email = String(p.email ?? "").toLowerCase();
-  const emailVerified = p.email_verified === true;
+const email = String(
+  p["https://dyneticwms.com/email"] ?? p.email ?? ""
+).toLowerCase();
+
+const emailVerified =
+  p["https://dyneticwms.com/email_verified"] === true ||
+  p.email_verified === true;
 
   if (!subject || !email) throw new Error("AUTH_REQUIRED_CLAIMS_MISSING");
 
