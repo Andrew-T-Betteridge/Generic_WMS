@@ -1,7 +1,7 @@
 param(
     [string]$BaseUrl = "http://localhost:3001",
     [string]$SkuId = "TEST-LIVESTOCK-001-4CM",
-    [string]$ProductSlug = "dev-test-malawi-livestock-fish",
+    [string]$ProductSlug = "test-malawi-livestock-fish",
     [int]$Attempts = 10
 )
 
@@ -43,7 +43,7 @@ Write-Host "Base URL: $BaseUrl"
 Write-Host "SKU:      $SkuId"
 Write-Host "Attempts: $Attempts"
 Write-Host ""
-Write-Host "WARNING: this creates real PENDING_PAYMENT orders in fulfilment_dev and reserves test stock." -ForegroundColor Yellow
+Write-Host "WARNING: this creates real PENDING_PAYMENT orders in the database currently configured for the API and reserves test stock." -ForegroundColor Yellow
 Write-Host ""
 
 $before = Get-AvailableQty
