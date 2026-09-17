@@ -80,7 +80,15 @@ BEGIN
         END IF;
     END IF;
 
-    V_ORDER_ID := COALESCE(NULLIF(V_HEADER.ORDER_ID,''), LEFT(V_HEADER.SOURCE_ORDER_ID,20));
+    V_ORDER_ID := COALESCE(
+    NULLIF(V_HEADER.ORDER_ID,''),
+    'WEB-' || UPPER(
+        SUBSTRING(
+            REPLACE(gen_random_uuid()::TEXT,'-','')
+            FROM 1 FOR 16
+        )
+    )
+);
 
     IF V_ORDER_ID IS NULL OR V_ORDER_ID='' THEN
         RAISE EXCEPTION 'ORDER_ID_REQUIRED';
