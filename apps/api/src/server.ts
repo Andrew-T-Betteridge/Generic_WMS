@@ -62,9 +62,15 @@ async function verifyGuestAccess(token:string,scope:string,resourceId:string) {
 }
 
 app.get("/health",async()=>{
-  const r=await db.query("select now() as database_time");
+  const r=await db.query("select current_database() as database_name, now() as database_time");
   const v=await q("select api.GET_SYSTEM_VERSION() as data");
-  return{ok:true,service:"DYNETIC WMS API",version:v?.version??null,databaseTime:r.rows[0].database_time};
+  const databaseName=String(r.rows[0].database_name??"");
+  const environment=
+    databaseName==="fulfilment_prod" ? "PROD" :
+    databaseName==="fulfilment_test" ? "TEST" :
+    databaseName==="fulfilment_dev" ? "DEV" :
+    "UNKNOWN";
+  return{ok:true,service:"DYNETIC WMS API",version:v?.version??null,environment,databaseTime:r.rows[0].database_time};
 });
 app.get("/api/system/version",async()=> await q("select api.GET_SYSTEM_VERSION() as data"));
 

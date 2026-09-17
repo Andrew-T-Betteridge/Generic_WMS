@@ -1,4 +1,20 @@
 \set ON_ERROR_STOP on
+
+-- DYNETIC_TEST_ENVIRONMENT_GUARD_BEGIN
+DO $dynetic_test_guard$
+DECLARE
+    v_database text := current_database();
+BEGIN
+    IF v_database NOT IN ('fulfilment_dev', 'fulfilment_test') THEN
+        RAISE EXCEPTION
+            'SAFETY STOP: database test execution is forbidden against database "%". Only fulfilment_dev and fulfilment_test are allowed.',
+            v_database;
+    END IF;
+
+    RAISE NOTICE 'SAFETY: test database verified as %', v_database;
+END
+$dynetic_test_guard$;
+-- DYNETIC_TEST_ENVIRONMENT_GUARD_END
 \pset pager off
 BEGIN;
 \ir ../seeds/001_finatics_fry_tray.sql

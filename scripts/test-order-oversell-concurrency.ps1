@@ -4,9 +4,16 @@ param(
     [string]$ProductSlug = "test-malawi-livestock-fish",
     [int]$Attempts = 10
 )
+# DYNETIC_TEST_WRAPPER_GUARD_BEGIN
+. "$PSScriptRoot\Test-Safety.ps1"
+$null = Assert-DyneticTestScriptSafety -ScriptPath $MyInvocation.MyCommand.Path -BoundParameters $PSBoundParameters
+# DYNETIC_TEST_WRAPPER_GUARD_END
+
 
 $ErrorActionPreference = "Stop"
 
+. "$PSScriptRoot\Test-Safety.ps1"
+$null = Assert-DyneticNonProductionApi -BaseUrl $BaseUrl
 function Read-ErrorBody($err) {
     if ($err.ErrorDetails -and $err.ErrorDetails.Message) {
         return $err.ErrorDetails.Message

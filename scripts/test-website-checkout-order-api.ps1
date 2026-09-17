@@ -2,6 +2,11 @@ param(
     [string]$Database = "fulfilment_dev",
     [string]$DbUser = "postgres"
 )
+# DYNETIC_TEST_WRAPPER_GUARD_BEGIN
+. "$PSScriptRoot\Test-Safety.ps1"
+$null = Assert-DyneticTestScriptSafety -ScriptPath $MyInvocation.MyCommand.Path -BoundParameters $PSBoundParameters
+# DYNETIC_TEST_WRAPPER_GUARD_END
+
 $ErrorActionPreference = "Stop"
 $Psql = "C:\Program Files\PostgreSQL\18\bin\psql.exe"
 

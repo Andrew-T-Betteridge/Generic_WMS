@@ -2,9 +2,16 @@ param(
     [string]$BaseUrl = "http://localhost:3001",
     [string]$AccessToken = ""
 )
+# DYNETIC_TEST_WRAPPER_GUARD_BEGIN
+. "$PSScriptRoot\Test-Safety.ps1"
+$null = Assert-DyneticTestScriptSafety -ScriptPath $MyInvocation.MyCommand.Path -BoundParameters $PSBoundParameters
+# DYNETIC_TEST_WRAPPER_GUARD_END
+
 
 $ErrorActionPreference = "Stop"
 
+. "$PSScriptRoot\Test-Safety.ps1"
+$null = Assert-DyneticNonProductionApi -BaseUrl $BaseUrl
 if (-not $AccessToken) {
     $secure = Read-Host "Paste an Auth0 USER access token" -AsSecureString
     $ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)

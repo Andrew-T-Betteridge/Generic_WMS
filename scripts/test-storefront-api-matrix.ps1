@@ -1,11 +1,18 @@
-﻿param(
+param(
     [string]$BaseUrl = "http://localhost:3001",
     [string]$Postcode = "CV13 0AA",
     [string]$Country = "GB",
     [int]$MaxVariants = 100
 )
+# DYNETIC_TEST_WRAPPER_GUARD_BEGIN
+. "$PSScriptRoot\Test-Safety.ps1"
+$null = Assert-DyneticTestScriptSafety -ScriptPath $MyInvocation.MyCommand.Path -BoundParameters $PSBoundParameters
+# DYNETIC_TEST_WRAPPER_GUARD_END
+
 
 $ErrorActionPreference = "Stop"
+. "$PSScriptRoot\Test-Safety.ps1"
+$null = Assert-DyneticNonProductionApi -BaseUrl $BaseUrl
 $pass = 0
 $fail = 0
 $skip = 0

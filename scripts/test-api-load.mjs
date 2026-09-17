@@ -16,7 +16,19 @@ async function json(path,init={}){
 }
 function pct(values,p){if(!values.length)return 0;const xs=[...values].sort((a,b)=>a-b);const i=Math.min(xs.length-1,Math.max(0,Math.ceil((p/100)*xs.length)-1));return xs[i]}
 
-const health=await json('/health'); if(!health.ok){console.error('API health failed');process.exit(1)}
+const health=await json('/health');
+if(!health.ok){console.error('API health failed');process.exit(1)}
+// DYNETIC_TEST_API_ENVIRONMENT_GUARD
+const apiEnvironment=String(health.data?.environment??'').trim().toUpperCase();
+if(apiEnvironment==='PROD'){
+  console.error('SAFETY STOP: tests are FORBIDDEN against the PROD API. No load test has been run.');
+  process.exit(2);
+}
+if(!['DEV','TEST'].includes(apiEnvironment)){
+  console.error(`SAFETY STOP: API environment "${apiEnvironment||'<missing>'}" is not an approved test environment. Only DEV or TEST are allowed.`);
+  process.exit(2);
+}
+console.log(`[SAFETY] API environment verified as ${apiEnvironment}.`);
 const cat=await json('/api/catalog/products'); if(!cat.ok||!Array.isArray(cat.data)||!cat.data.length){console.error('Catalogue empty');process.exit(1)}
 const variants=[];
 for(const p of cat.data){

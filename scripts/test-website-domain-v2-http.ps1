@@ -1,5 +1,12 @@
 param([string]$BaseUrl="http://localhost:3001")
+# DYNETIC_TEST_WRAPPER_GUARD_BEGIN
+. "$PSScriptRoot\Test-Safety.ps1"
+$null = Assert-DyneticTestScriptSafety -ScriptPath $MyInvocation.MyCommand.Path -BoundParameters $PSBoundParameters
+# DYNETIC_TEST_WRAPPER_GUARD_END
+
 $ErrorActionPreference="Stop"
+. "$PSScriptRoot\Test-Safety.ps1"
+$null = Assert-DyneticNonProductionApi -BaseUrl $BaseUrl
 function Assert-True([bool]$Condition,[string]$Message){ if(-not $Condition){ throw $Message } }
 Write-Host "Testing Website Domain V2 HTTP API at $BaseUrl"
 $health=Invoke-RestMethod "$BaseUrl/health"; Assert-True ($health.ok -eq $true) "Health endpoint failed."
