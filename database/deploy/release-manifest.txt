@@ -1,0 +1,21 @@
+# DYNETIC WMS 0.3.4 release manifest
+# Delta from dynetic-wms-v0.2.0 through the validated v0.3.3 code baseline,
+# plus deployment controls/version registration added for v0.3.4.
+#
+# Order matters:
+# 1-2 normalisers used by SUBMIT_WEB_ORDER
+# 3 authoritative checkout quote
+# 4 collision-safe interface order processing
+# 5 authoritative web-order submission
+# 6 FINatics fry-tray product media data
+# 7 system version marker LAST
+#
+# Tests, fixtures, smoke/load scripts are deliberately absent.
+
+database/functions/api/NORMALIZE_GB_PHONE.sql
+database/functions/api/NORMALIZE_GB_POSTCODE.sql
+database/functions/api/QUOTE_CHECKOUT.sql
+database/functions/interface/PROCESS_ORDER_INTERFACE.sql
+database/functions/api/SUBMIT_WEB_ORDER.sql
+database/seeds/002_finatics_fry_tray_media.sql
+database/migrations/0018_dynetic_wms_0_3_4.sql
