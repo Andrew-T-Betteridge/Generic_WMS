@@ -257,6 +257,38 @@ BEGIN
         END IF;
     END IF;
 
+    --------------------------------------------------------------------------
+    -- AUTHORITATIVE ADDRESS STORAGE-LENGTH VALIDATION
+    --------------------------------------------------------------------------
+    -- Validate normalised values before quoting/order creation. Never silently
+    -- truncate customer delivery data to fit core.ADDRESS.
+    IF v_address1 IS NOT NULL AND LENGTH(v_address1) > 60 THEN
+        RETURN jsonb_build_object(
+            'status','REJECTED',
+            'code','DELIVERY_ADDRESS1_TOO_LONG'
+        );
+    END IF;
+
+    IF v_address2 IS NOT NULL AND LENGTH(v_address2) > 60 THEN
+        RETURN jsonb_build_object(
+            'status','REJECTED',
+            'code','DELIVERY_ADDRESS2_TOO_LONG'
+        );
+    END IF;
+
+    IF v_town IS NOT NULL AND LENGTH(v_town) > 60 THEN
+        RETURN jsonb_build_object(
+            'status','REJECTED',
+            'code','DELIVERY_TOWN_TOO_LONG'
+        );
+    END IF;
+
+    IF v_county IS NOT NULL AND LENGTH(v_county) > 60 THEN
+        RETURN jsonb_build_object(
+            'status','REJECTED',
+            'code','DELIVERY_COUNTY_TOO_LONG'
+        );
+    END IF;
     /*
      * Quote against canonical customer/address values. Browser formatting is
      * never authoritative.
@@ -549,10 +581,10 @@ BEGIN
                 ),
                 50
             ),
-            LEFT(v_address1,60),
-            LEFT(v_address2,60),
-            LEFT(v_town,60),
-            LEFT(v_county,60),
+            v_address1,
+            v_address2,
+            v_town,
+            v_county,
             LEFT(v_postcode,20),
             LEFT(v_country,25),
             'Y',
