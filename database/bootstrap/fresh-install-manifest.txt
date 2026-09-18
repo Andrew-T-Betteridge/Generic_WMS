@@ -1,0 +1,16 @@
+# DYNETIC WMS 0.3.5 fresh-install manifest
+#
+# This is ONLY for an EMPTY database.
+# It is not an upgrade manifest.
+#
+# No tests, fixtures, smoke scripts or load-test scripts are permitted.
+#
+# Product/catalogue base data is production data.
+# Delivery zones are deliberately excluded until production fulfilment
+# configuration is explicitly approved.
+
+database/bootstrap/001_dynetic_schema_v0_3_4.sql
+database/seeds/001_finatics_fry_tray.sql
+database/seeds/002_finatics_fry_tray_media.sql
+database/bootstrap/002_finatics_base_config.sql
+database/migrations/0019_dynetic_wms_0_3_5.sql
