@@ -6,6 +6,7 @@ import "dotenv/config";
 import { db } from "./db.js";
 import { optionalIdentity, requireAdmin, requireIdentity } from "./auth.js";
 import { createStripePaymentIntent, createStripeRefund, normaliseStripeEvent, verifyStripeSignature } from "./stripe.js";
+import { AddressLookupError, resolveUkAddress, searchUkAddresses } from "./address.js";
 
 const app = Fastify({ logger: true });
 const clientId = process.env.DEFAULT_CLIENT_ID ?? "FINATICS";
@@ -83,6 +84,37 @@ app.get("/api/catalog/products/:slug/media",async(req,reply)=>{const {slug}=req.
 app.get("/api/catalog/products/:slug/affiliate-links",async(req)=>{const {slug}=req.params as {slug:string};return (await q("select api.GET_AFFILIATE_LINKS($1,$2) as data",[clientId,slug]))??[];});
 app.get("/api/catalog/products/:slug/reviews",async(req)=>{const {slug}=req.params as {slug:string};return await q("select api.GET_PRODUCT_REVIEWS($1,$2) as data",[clientId,slug]);});
 app.post("/api/catalog/products/:slug/reviews",async(req,reply)=>{const {slug}=req.params as {slug:string};try{return reply.code(202).send(await q("select api.SUBMIT_PRODUCT_REVIEW($1,$2,$3::jsonb) as data",[clientId,slug,JSON.stringify(req.body??{})]));}catch{return reply.code(400).send({error:"INVALID_REVIEW"});}});
+
+/* PUBLIC ADDRESS LOOKUP: provider key stays server-side; manual checkout never depends on this feature. */
+app.get("/api/address/search",async(req,reply)=>{
+  const x=req.query as {q?:string;country?:string};
+  try{
+    const items=await searchUkAddresses(String(x.q??""),String(x.country??"GB"));
+    return {items};
+  }catch(e){
+    if(e instanceof AddressLookupError){
+      if(e.status>=500) req.log.warn({code:e.code},"Address lookup unavailable");
+      return reply.code(e.status).send({error:e.code});
+    }
+    req.log.error(e);
+    return reply.code(503).send({error:"ADDRESS_LOOKUP_UNAVAILABLE"});
+  }
+});
+
+app.get("/api/address/resolve/:id",async(req,reply)=>{
+  const {id}=req.params as {id:string};
+  try{
+    const address=await resolveUkAddress(id);
+    return {address};
+  }catch(e){
+    if(e instanceof AddressLookupError){
+      if(e.status>=500) req.log.warn({code:e.code},"Address lookup unavailable");
+      return reply.code(e.status).send({error:e.code});
+    }
+    req.log.error(e);
+    return reply.code(503).send({error:"ADDRESS_LOOKUP_UNAVAILABLE"});
+  }
+});
 
 /* PUBLIC CHECKOUT PRE-FLIGHT */
 app.post("/api/checkout/validate",async(req,reply)=>{const b=req.body as {items?:unknown[]};const d=await q("select api.VALIDATE_BASKET($1,$2::jsonb) as data",[clientId,JSON.stringify(b.items??[])]);return reply.code(d?.valid?200:400).send(d);});

@@ -1,3 +1,5 @@
+\set ON_ERROR_STOP on
+
 CREATE OR REPLACE FUNCTION api.SUBMIT_WEB_ORDER (
     p_client_id VARCHAR,
     p_payload JSONB
@@ -30,6 +32,22 @@ DECLARE
     v_promo_code VARCHAR(50);
     v_free_delivery BOOLEAN := FALSE;
     v_idempotent_replay BOOLEAN := FALSE;
+
+    v_customer_name TEXT;
+    v_email TEXT;
+    v_phone_raw TEXT;
+    v_mobile_raw TEXT;
+    v_phone TEXT;
+    v_mobile TEXT;
+    v_address1 TEXT;
+    v_address2 TEXT;
+    v_town TEXT;
+    v_county TEXT;
+    v_postcode_raw TEXT;
+    v_postcode TEXT;
+    v_country_raw TEXT;
+    v_country TEXT;
+    v_requires_delivery_address BOOLEAN := FALSE;
 BEGIN
     v_source_order_id := NULLIF(TRIM(p_payload->>'idempotencyKey'),'');
     IF v_source_order_id IS NULL THEN
@@ -77,10 +95,278 @@ BEGIN
         );
     END IF;
 
+    --------------------------------------------------------------------------
+    -- AUTHORITATIVE CUSTOMER VALIDATION
+    --------------------------------------------------------------------------
+    v_customer_name := NULLIF(
+        regexp_replace(
+            TRIM(COALESCE(p_payload#>>'{customer,name}','')),
+            '[[:space:]]+',
+            ' ',
+            'g'
+        ),
+        ''
+    );
+
+    IF v_customer_name IS NULL THEN
+        RETURN jsonb_build_object(
+            'status','REJECTED',
+            'code','CUSTOMER_NAME_REQUIRED'
+        );
+    END IF;
+
+    IF LENGTH(v_customer_name) > 50 THEN
+        RETURN jsonb_build_object(
+            'status','REJECTED',
+            'code','CUSTOMER_NAME_INVALID'
+        );
+    END IF;
+
+    v_email := LOWER(NULLIF(TRIM(p_payload#>>'{customer,email}'),''));
+
+    IF v_email IS NULL
+       OR LENGTH(v_email) > 254
+       OR v_email !~* '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'
+    THEN
+        RETURN jsonb_build_object(
+            'status','REJECTED',
+            'code','CUSTOMER_EMAIL_INVALID'
+        );
+    END IF;
+
+    v_phone_raw := NULLIF(TRIM(p_payload#>>'{customer,phone}'),'');
+    v_mobile_raw := NULLIF(TRIM(p_payload#>>'{customer,mobile}'),'');
+
+    IF v_phone_raw IS NULL AND v_mobile_raw IS NULL THEN
+        RETURN jsonb_build_object(
+            'status','REJECTED',
+            'code','CUSTOMER_PHONE_INVALID'
+        );
+    END IF;
+
+    IF v_phone_raw IS NOT NULL THEN
+        v_phone := api.NORMALIZE_GB_PHONE(v_phone_raw);
+
+        IF v_phone IS NULL THEN
+            RETURN jsonb_build_object(
+                'status','REJECTED',
+                'code','CUSTOMER_PHONE_INVALID'
+            );
+        END IF;
+    END IF;
+
+    IF v_mobile_raw IS NOT NULL THEN
+        v_mobile := api.NORMALIZE_GB_PHONE(v_mobile_raw);
+
+        IF v_mobile IS NULL THEN
+            RETURN jsonb_build_object(
+                'status','REJECTED',
+                'code','CUSTOMER_PHONE_INVALID'
+            );
+        END IF;
+    END IF;
+
+    IF v_phone IS NOT NULL
+       AND v_mobile IS NOT NULL
+       AND v_phone <> v_mobile
+    THEN
+        RETURN jsonb_build_object(
+            'status','REJECTED',
+            'code','CUSTOMER_PHONE_CONFLICT'
+        );
+    END IF;
+
+    -- New storefront contract: customer.phone is canonical.
+    -- customer.mobile remains accepted for backwards compatibility.
+    v_phone := COALESCE(v_phone,v_mobile);
+
+    --------------------------------------------------------------------------
+    -- CANONICAL DELIVERY ADDRESS VALUES
+    --------------------------------------------------------------------------
+    v_address1 := NULLIF(
+        regexp_replace(
+            TRIM(COALESCE(p_payload#>>'{deliveryAddress,address1}','')),
+            '[[:space:]]+',
+            ' ',
+            'g'
+        ),
+        ''
+    );
+
+    v_address2 := NULLIF(
+        regexp_replace(
+            TRIM(COALESCE(p_payload#>>'{deliveryAddress,address2}','')),
+            '[[:space:]]+',
+            ' ',
+            'g'
+        ),
+        ''
+    );
+
+    v_town := NULLIF(
+        regexp_replace(
+            TRIM(COALESCE(p_payload#>>'{deliveryAddress,town}','')),
+            '[[:space:]]+',
+            ' ',
+            'g'
+        ),
+        ''
+    );
+
+    v_county := NULLIF(
+        regexp_replace(
+            TRIM(COALESCE(p_payload#>>'{deliveryAddress,county}','')),
+            '[[:space:]]+',
+            ' ',
+            'g'
+        ),
+        ''
+    );
+
+    v_postcode_raw := NULLIF(
+        TRIM(p_payload#>>'{deliveryAddress,postcode}'),
+        ''
+    );
+
+    v_country_raw := NULLIF(
+        UPPER(TRIM(p_payload#>>'{deliveryAddress,country}')),
+        ''
+    );
+
+    v_country := CASE
+        WHEN v_country_raw IS NULL THEN 'GB'
+        WHEN v_country_raw IN ('GB','GBR','UK','UNITED KINGDOM') THEN 'GB'
+        ELSE v_country_raw
+    END;
+
+    IF v_country <> 'GB' THEN
+        RETURN jsonb_build_object(
+            'status','REJECTED',
+            'code','DELIVERY_COUNTRY_UNSUPPORTED'
+        );
+    END IF;
+
+    IF v_postcode_raw IS NOT NULL THEN
+        v_postcode := api.NORMALIZE_GB_POSTCODE(v_postcode_raw);
+
+        IF v_postcode IS NULL THEN
+            RETURN jsonb_build_object(
+                'status','REJECTED',
+                'code','DELIVERY_POSTCODE_INVALID'
+            );
+        END IF;
+    END IF;
+
+    /*
+     * Quote against canonical customer/address values. Browser formatting is
+     * never authoritative.
+     */
+    p_payload := jsonb_set(
+        p_payload,
+        '{customer,name}',
+        to_jsonb(v_customer_name),
+        TRUE
+    );
+
+    p_payload := jsonb_set(
+        p_payload,
+        '{customer,email}',
+        to_jsonb(v_email),
+        TRUE
+    );
+
+    p_payload := jsonb_set(
+        p_payload,
+        '{customer,phone}',
+        to_jsonb(v_phone),
+        TRUE
+    );
+
+    IF v_mobile_raw IS NOT NULL THEN
+        p_payload := jsonb_set(
+            p_payload,
+            '{customer,mobile}',
+            to_jsonb(COALESCE(v_mobile,v_phone)),
+            TRUE
+        );
+    END IF;
+
+    IF NOT (p_payload ? 'deliveryAddress') THEN
+        p_payload := jsonb_set(
+            p_payload,
+            '{deliveryAddress}',
+            '{}'::jsonb,
+            TRUE
+        );
+    END IF;
+
+    p_payload := jsonb_set(
+        p_payload,
+        '{deliveryAddress,country}',
+        to_jsonb(v_country),
+        TRUE
+    );
+
+    IF v_postcode IS NOT NULL THEN
+        p_payload := jsonb_set(
+            p_payload,
+            '{deliveryAddress,postcode}',
+            to_jsonb(v_postcode),
+            TRUE
+        );
+    END IF;
+
+    IF v_address1 IS NOT NULL THEN
+        p_payload := jsonb_set(
+            p_payload,
+            '{deliveryAddress,address1}',
+            to_jsonb(v_address1),
+            TRUE
+        );
+    END IF;
+
+    IF v_address2 IS NOT NULL THEN
+        p_payload := jsonb_set(
+            p_payload,
+            '{deliveryAddress,address2}',
+            to_jsonb(v_address2),
+            TRUE
+        );
+    END IF;
+
+    IF v_town IS NOT NULL THEN
+        p_payload := jsonb_set(
+            p_payload,
+            '{deliveryAddress,town}',
+            to_jsonb(v_town),
+            TRUE
+        );
+    END IF;
+
+    IF v_county IS NOT NULL THEN
+        p_payload := jsonb_set(
+            p_payload,
+            '{deliveryAddress,county}',
+            to_jsonb(v_county),
+            TRUE
+        );
+    END IF;
+
+    --------------------------------------------------------------------------
+    -- FINAL FULFILMENT / PRICE REVALIDATION
+    --------------------------------------------------------------------------
     v_quote := api.QUOTE_CHECKOUT(p_client_id,p_payload);
     v_basket := v_quote->'basket';
 
     IF NOT COALESCE((v_quote->>'valid')::BOOLEAN,FALSE) THEN
+        IF COALESCE(v_quote->>'code','') = 'FULFILMENT_OPTION_NOT_AVAILABLE' THEN
+            RETURN jsonb_build_object(
+                'status','REJECTED',
+                'code','FULFILMENT_ADDRESS_CHANGED',
+                'quote',v_quote
+            );
+        END IF;
+
         RETURN jsonb_build_object(
             'status','REJECTED',
             'code',
@@ -123,24 +409,65 @@ BEGIN
 
     v_fulfilment_method :=
         UPPER(NULLIF(TRIM(v_selected->>'fulfilmentMethod'),''));
+
     v_fulfilment_option_code :=
         NULLIF(TRIM(v_selected->>'code'),'');
+
+    v_requires_delivery_address :=
+        v_fulfilment_method IN (
+            'CARRIER',
+            'LOCAL_DELIVERY',
+            'ROUTE_DELIVERY'
+        );
+
+    IF v_requires_delivery_address THEN
+        IF v_address1 IS NULL THEN
+            RETURN jsonb_build_object(
+                'status','REJECTED',
+                'code','DELIVERY_ADDRESS1_REQUIRED'
+            );
+        END IF;
+
+        IF v_town IS NULL THEN
+            RETURN jsonb_build_object(
+                'status','REJECTED',
+                'code','DELIVERY_TOWN_REQUIRED'
+            );
+        END IF;
+
+        IF v_postcode IS NULL THEN
+            RETURN jsonb_build_object(
+                'status','REJECTED',
+                'code','DELIVERY_POSTCODE_INVALID'
+            );
+        END IF;
+    END IF;
 
     v_fulfilment_preference := COALESCE(
         NULLIF(UPPER(TRIM(p_payload->>'fulfilmentPreference')),''),
         'CONSOLIDATE'
     );
 
-    IF v_fulfilment_preference NOT IN ('CONSOLIDATE','SPLIT_WHEN_REQUIRED') THEN
+    IF v_fulfilment_preference NOT IN (
+        'CONSOLIDATE',
+        'SPLIT_WHEN_REQUIRED'
+    ) THEN
         RAISE EXCEPTION 'INVALID_FULFILMENT_PREFERENCE';
     END IF;
 
     IF v_fulfilment_method NOT IN (
-        'CARRIER','LOCAL_DELIVERY','COLLECTION','ROUTE_DELIVERY','MEET_POINT'
+        'CARRIER',
+        'LOCAL_DELIVERY',
+        'COLLECTION',
+        'ROUTE_DELIVERY',
+        'MEET_POINT'
     ) THEN
         RAISE EXCEPTION 'INVALID_FULFILMENT_METHOD';
     END IF;
 
+    --------------------------------------------------------------------------
+    -- EXISTING ORDER CREATION PATH
+    --------------------------------------------------------------------------
     IF v_existing.INTERFACE_ID IS NOT NULL THEN
         v_idempotent_replay := TRUE;
 
@@ -183,46 +510,68 @@ BEGIN
             );
 
         INSERT INTO core.ADDRESS (
-            CLIENT_ID,ADDRESS_ID,ADDRESS_TYPE,
-            CONTACT,CONTACT_PHONE,CONTACT_MOBILE,CONTACT_EMAIL,
-            NAME,ADDRESS1,ADDRESS2,TOWN,COUNTY,POSTCODE,COUNTRY,
-            ACTIVE,DEFAULT_BILLING,DEFAULT_DELIVERY
+            CLIENT_ID,
+            ADDRESS_ID,
+            ADDRESS_TYPE,
+            CONTACT,
+            CONTACT_PHONE,
+            CONTACT_MOBILE,
+            CONTACT_EMAIL,
+            NAME,
+            ADDRESS1,
+            ADDRESS2,
+            TOWN,
+            COUNTY,
+            POSTCODE,
+            COUNTRY,
+            ACTIVE,
+            DEFAULT_BILLING,
+            DEFAULT_DELIVERY
         )
         VALUES (
             p_client_id,
             v_address_id,
             'DELIVERY',
-            LEFT(NULLIF(TRIM(p_payload#>>'{customer,name}'),''),25),
-            LEFT(NULLIF(TRIM(p_payload#>>'{customer,phone}'),''),25),
-            LEFT(NULLIF(TRIM(p_payload#>>'{customer,mobile}'),''),25),
-            NULLIF(TRIM(p_payload#>>'{customer,email}'),''),
+            LEFT(v_customer_name,25),
+            LEFT(v_phone,25),
+            LEFT(
+                CASE
+                    WHEN v_mobile_raw IS NOT NULL
+                        THEN COALESCE(v_mobile,v_phone)
+                END,
+                25
+            ),
+            v_email,
             LEFT(
                 COALESCE(
                     NULLIF(TRIM(p_payload#>>'{deliveryAddress,name}'),''),
-                    NULLIF(TRIM(p_payload#>>'{customer,name}'),'')
+                    v_customer_name
                 ),
                 50
             ),
-            LEFT(NULLIF(TRIM(p_payload#>>'{deliveryAddress,address1}'),''),60),
-            LEFT(NULLIF(TRIM(p_payload#>>'{deliveryAddress,address2}'),''),60),
-            LEFT(NULLIF(TRIM(p_payload#>>'{deliveryAddress,town}'),''),60),
-            LEFT(NULLIF(TRIM(p_payload#>>'{deliveryAddress,county}'),''),60),
-            LEFT(NULLIF(UPPER(TRIM(p_payload#>>'{deliveryAddress,postcode}')),''),20),
-            LEFT(
-                COALESCE(
-                    NULLIF(UPPER(TRIM(p_payload#>>'{deliveryAddress,country}')),''),
-                    'GB'
-                ),
-                25
-            ),
-            'Y','N','Y'
+            LEFT(v_address1,60),
+            LEFT(v_address2,60),
+            LEFT(v_town,60),
+            LEFT(v_county,60),
+            LEFT(v_postcode,20),
+            LEFT(v_country,25),
+            'Y',
+            'N',
+            'Y'
         );
 
         INSERT INTO interface.ORDER_HEADER_IF (
-            CLIENT_ID,SOURCE_SYSTEM,SOURCE_ORDER_ID,
-            CUSTOMER_ID,ORDER_DATE,
-            DISPATCH_METHOD,SERVICE_LEVEL,ADDRESS_ID,
-            ORDER_VALUE,CURRENCY,FULFILMENT_PREFERENCE,
+            CLIENT_ID,
+            SOURCE_SYSTEM,
+            SOURCE_ORDER_ID,
+            CUSTOMER_ID,
+            ORDER_DATE,
+            DISPATCH_METHOD,
+            SERVICE_LEVEL,
+            ADDRESS_ID,
+            ORDER_VALUE,
+            CURRENCY,
+            FULFILMENT_PREFERENCE,
             PROCESS_STATUS
         )
         VALUES (
@@ -258,9 +607,15 @@ BEGIN
             v_line_id := v_line_id + 1;
 
             INSERT INTO interface.ORDER_LINE_IF (
-                INTERFACE_ID,LINE_ID,SOURCE_LINE_ID,
-                SKU_ID,QTY_ORDERED,PRODUCT_PRICE,EXTENDED_PRICE,
-                NOTES,PROCESS_STATUS
+                INTERFACE_ID,
+                LINE_ID,
+                SOURCE_LINE_ID,
+                SKU_ID,
+                QTY_ORDERED,
+                PRODUCT_PRICE,
+                EXTENDED_PRICE,
+                NOTES,
+                PROCESS_STATUS
             )
             VALUES (
                 v_interface_id,
