@@ -25,8 +25,8 @@ DECLARE
     v_media integer;
 BEGIN
     SELECT api.GET_SYSTEM_VERSION()->>'version' INTO v_version;
-    IF v_version <> '0.3.5' THEN
-        RAISE EXCEPTION 'Expected version 0.3.5, got %', v_version;
+    IF v_version <> '0.3.6' THEN
+        RAISE EXCEPTION 'Expected version 0.3.6, got %', v_version;
     END IF;
 
     SELECT count(*) INTO v_tables
@@ -89,7 +89,7 @@ BEGIN
         RAISE EXCEPTION 'Missing FINATICS LIVESTOCK delivery-class control.';
     END IF;
 
-    RAISE NOTICE 'PASS: DYNETIC 0.3.5 fresh bootstrap verified.';
+    RAISE NOTICE 'PASS: DYNETIC 0.3.6 fresh bootstrap verified.';
     RAISE NOTICE 'Tables=%, Views=%, Functions=%, FRYTRAY variants=%, Media=%',
                  v_tables, v_views, v_functions, v_variants, v_media;
 END
