@@ -15,8 +15,7 @@ verified v0.3.4 TEST schema. Static review confirmed:
 - five application schemas: api, audit, config, core, interface.
 
 The fresh-install manifest then applies the approved FINatics fry-tray catalogue
-seed, media seed, production-safe base configuration, postcode directory schema, and the v0.3.10 version
-marker.
+seed, media seed, production-safe base configuration, postcode directory schema, and migrations through v0.3.11, including the delivery-engine and safe postcode-refresh structures.
 
 Delivery-zone rows are deliberately not included. The TEST-only LOCAL-CV13
 fixture must not be silently promoted into production.

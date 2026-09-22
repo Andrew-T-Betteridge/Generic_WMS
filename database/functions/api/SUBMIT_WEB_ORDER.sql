@@ -23,6 +23,9 @@ DECLARE
     v_fulfilment_preference VARCHAR(30);
     v_fulfilment_method VARCHAR(30);
     v_fulfilment_option_code VARCHAR(100);
+    v_standard_fulfilment_method VARCHAR(30);
+    v_livestock_fulfilment_method VARCHAR(30);
+    v_delivery_distance_miles NUMERIC(8,2);
     v_result RECORD;
     v_existing interface.ORDER_HEADER_IF%ROWTYPE;
     v_existing_order core.ORDER_HEADER%ROWTYPE;
@@ -445,11 +448,27 @@ BEGIN
     v_fulfilment_option_code :=
         NULLIF(TRIM(v_selected->>'code'),'');
 
+    v_standard_fulfilment_method :=
+        NULLIF(
+            UPPER(TRIM(v_selected#>>'{fulfilmentPlan,standardMethod}')),
+            ''
+        );
+
+    v_livestock_fulfilment_method :=
+        NULLIF(
+            UPPER(TRIM(v_selected#>>'{fulfilmentPlan,livestockMethod}')),
+            ''
+        );
+
+    v_delivery_distance_miles :=
+        NULLIF(v_selected->>'distanceMiles','')::NUMERIC;
+
     v_requires_delivery_address :=
         v_fulfilment_method IN (
             'CARRIER',
             'LOCAL_DELIVERY',
-            'ROUTE_DELIVERY'
+            'ROUTE_DELIVERY',
+            'MEET_POINT'
         );
 
     IF v_requires_delivery_address THEN
@@ -476,7 +495,14 @@ BEGIN
     END IF;
 
     v_fulfilment_preference := COALESCE(
-        NULLIF(UPPER(TRIM(p_payload->>'fulfilmentPreference')),''),
+        NULLIF(
+            UPPER(TRIM(v_selected->>'fulfilmentPreference')),
+            ''
+        ),
+        NULLIF(
+            UPPER(TRIM(p_payload->>'fulfilmentPreference')),
+            ''
+        ),
         'CONSOLIDATE'
     );
 
@@ -682,6 +708,7 @@ BEGIN
        SET DISPATCH_METHOD=v_fulfilment_method,
            SERVICE_LEVEL=v_fulfilment_option_code,
            FULFILMENT_PREFERENCE=v_fulfilment_preference,
+           DELIVERY_DISTANCE_MILES=v_delivery_distance_miles,
            FREIGHT_COST=v_freight_cost,
            FREE_DELIVERY=CASE WHEN v_free_delivery THEN 'Y' ELSE 'N' END,
            ORDER_VALUE=v_order_value,
@@ -691,6 +718,24 @@ BEGIN
      WHERE CLIENT_ID=p_client_id
        AND ORDER_ID=v_order_id;
 
+    UPDATE core.ORDER_LINE ol
+       SET FULFILMENT_TYPE =
+           CASE
+               WHEN UPPER(COALESCE(p.DELIVERY_CLASS,'STANDARD')) = 'LIVESTOCK'
+                   THEN v_livestock_fulfilment_method
+               ELSE v_standard_fulfilment_method
+           END,
+           LAST_UPDATED_BY='WEB_API',
+           LAST_UPDATE_DATE=now()
+      FROM core.PRODUCT_VARIANT pv
+      JOIN core.PRODUCT p
+        ON p.CLIENT_ID=pv.CLIENT_ID
+       AND p.PRODUCT_ID=pv.PRODUCT_ID
+     WHERE ol.CLIENT_ID=p_client_id
+       AND ol.ORDER_ID=v_order_id
+       AND pv.CLIENT_ID=ol.CLIENT_ID
+       AND pv.SKU_ID=ol.SKU_ID
+       AND pv.ACTIVE=TRUE;
     RETURN jsonb_build_object(
         'status','ACCEPTED',
         'interfaceId',v_interface_id,
@@ -699,6 +744,9 @@ BEGIN
         'fulfilmentStatus','NEW',
         'fulfilmentOptionCode',v_fulfilment_option_code,
         'fulfilmentMethod',v_fulfilment_method,
+        'fulfilmentPreference',v_fulfilment_preference,
+        'fulfilmentPlan',v_selected->'fulfilmentPlan',
+        'deliveryDistanceMiles',v_delivery_distance_miles,
         'promoCode',v_promo_code,
         'discountAmount',v_discount,
         'totalBeforeDelivery',v_total_before_delivery,

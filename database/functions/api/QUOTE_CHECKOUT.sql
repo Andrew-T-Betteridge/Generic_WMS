@@ -42,6 +42,7 @@ BEGIN
                 'promotion',v_promo,
                 'discountAmount',0,
                 'totalBeforeDelivery',(v_basket->>'subtotal')::NUMERIC,
+                'deliveryContext',v_delivery->'deliveryContext',
                 'fulfilmentOptions',v_delivery->'fulfilmentOptions'
             );
         END IF;
@@ -72,6 +73,7 @@ BEGIN
                 'promotion',v_promo,
                 'discountAmount',v_discount,
                 'totalBeforeDelivery',v_total_before_delivery,
+                'deliveryContext',v_delivery->'deliveryContext',
                 'fulfilmentOptions',v_delivery->'fulfilmentOptions'
             );
         END IF;
@@ -84,6 +86,7 @@ BEGIN
                 'basket',v_basket,
                 'promotion',v_promo,
                 'selectedFulfilmentOption',v_selected,
+                'deliveryContext',v_delivery->'deliveryContext',
                 'fulfilmentOptions',v_delivery->'fulfilmentOptions'
             );
         END IF;
@@ -105,7 +108,8 @@ BEGIN
         'promotion',v_promo,
         'discountAmount',v_discount,
         'totalBeforeDelivery',v_total_before_delivery,
-        'fulfilmentOptions',v_delivery->'fulfilmentOptions',
+        'deliveryContext',v_delivery->'deliveryContext',
+                'fulfilmentOptions',v_delivery->'fulfilmentOptions',
         'selectedFulfilmentOption',v_selected,
         'freightCost',v_freight_cost,
         'freeDelivery',v_free_delivery,
