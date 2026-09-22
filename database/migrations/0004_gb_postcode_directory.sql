@@ -24,4 +24,22 @@ CREATE INDEX IF NOT EXISTS ix_gb_postcode_directory_outward
 CREATE INDEX IF NOT EXISTS ix_gb_postcode_directory_compact_prefix
     ON core.gb_postcode_directory (postcode_compact text_pattern_ops);
 
+DO $$
+DECLARE
+    v_schema_owner name;
+BEGIN
+    SELECT pg_get_userbyid(nspowner)
+      INTO v_schema_owner
+      FROM pg_namespace
+     WHERE nspname = 'core';
+
+    IF v_schema_owner IS NOT NULL AND v_schema_owner <> current_user THEN
+        EXECUTE format(
+            'ALTER TABLE core.gb_postcode_directory OWNER TO %I',
+            v_schema_owner
+        );
+    END IF;
+END
+$$;
+
 COMMIT;
