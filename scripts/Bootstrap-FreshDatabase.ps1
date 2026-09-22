@@ -50,9 +50,9 @@ if ($Target -eq "PROD") {
         Stop-Bootstrap "Tracked working-tree changes exist."
     }
 
-    $tag = (& git -C $repoRoot tag --points-at HEAD "dynetic-wms-v0.3.7").Trim()
-    if ($tag -ne "dynetic-wms-v0.3.7") {
-        Stop-Bootstrap "PROD requires HEAD tagged exactly dynetic-wms-v0.3.7."
+    $tag = (& git -C $repoRoot tag --points-at HEAD "dynetic-wms-v0.3.8").Trim()
+    if ($tag -ne "dynetic-wms-v0.3.8") {
+        Stop-Bootstrap "PROD requires HEAD tagged exactly dynetic-wms-v0.3.8."
     }
 }
 

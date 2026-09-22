@@ -1,4 +1,4 @@
-﻿BEGIN;
+BEGIN;
 
 CREATE TABLE IF NOT EXISTS core.gb_postcode_directory (
     postcode                       text PRIMARY KEY,
