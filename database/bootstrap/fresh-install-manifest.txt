@@ -1,4 +1,4 @@
-# DYNETIC WMS 0.3.11 fresh-install manifest
+# DYNETIC WMS 0.3.12 fresh-install manifest
 #
 # This is ONLY for an EMPTY database.
 # It is not an upgrade manifest.
@@ -6,8 +6,8 @@
 # No tests, fixtures, smoke scripts or load-test scripts are permitted.
 #
 # Product/catalogue base data is production data.
-# Delivery zones are deliberately excluded until production fulfilment
-# configuration is explicitly approved.
+# Production fulfilment and delivery-zone configuration is applied by
+# the source-controlled 0.3.12 migration included in this manifest.
 
 database/bootstrap/001_dynetic_schema_v0_3_4.sql
 database/migrations/0004_gb_postcode_directory.sql
@@ -19,3 +19,4 @@ database/migrations/0020_dynetic_wms_0_3_6.sql
 database/migrations/0021_dynetic_wms_0_3_9.sql
 database/migrations/0022_dynetic_wms_0_3_10.sql
 database/migrations/0023_dynetic_wms_0_3_11.sql
+database/migrations/0024_dynetic_wms_0_3_12.sql

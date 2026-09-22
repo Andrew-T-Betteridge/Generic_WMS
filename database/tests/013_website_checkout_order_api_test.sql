@@ -21,6 +21,27 @@ BEGIN;
 -- Seed catalogue.
 \ir ../seeds/001_finatics_fry_tray.sql
 
+-- Self-contained postcode reference data.
+-- Required because the regression database deliberately does not load
+-- the full national OS Code-Point Open dataset.
+INSERT INTO core.GB_POSTCODE_DIRECTORY (
+    POSTCODE,
+    POSTCODE_COMPACT,
+    OUTWARD_CODE,
+    EASTING,
+    NORTHING,
+    SOURCE
+)
+VALUES (
+    'CV13 6AG',
+    'CV136AG',
+    'CV13',
+    437758,
+    295582,
+    'OS_CODE_POINT_OPEN'
+)
+ON CONFLICT DO NOTHING;
+
 -- Self-contained stock location.
 INSERT INTO core.LOCATION (
     LOCATION_ID,LOC_TYPE,LOCK_STATUS,VOLUME,DISALLOW_ALLOC,
@@ -86,7 +107,7 @@ BEGIN
         'FINATICS',
         '{
           "items":[{"sku_id":"FRYTRAY001-S-G-W-G","qty":2}],
-          "deliveryAddress":{"postcode":"CV13 0AA","country":"GB"}
+          "deliveryAddress":{"postcode":"CV13 6AG","country":"GB"}
         }'::jsonb
     ) INTO v;
 
@@ -120,10 +141,10 @@ BEGIN
             "address1":"1 Test Street",
             "town":"Hinckley",
             "county":"Leicestershire",
-            "postcode":"CV13 0AA",
+            "postcode":"CV13 6AG",
             "country":"GB"
           },
-          "fulfilmentMethod":"CARRIER",
+          "fulfilmentOptionCode":"COLLECTION",
           "fulfilmentPreference":"CONSOLIDATE"
         }'::jsonb
     ) INTO v;
@@ -139,8 +160,10 @@ BEGIN
         FROM core.ORDER_HEADER
         WHERE CLIENT_ID='FINATICS'
           AND ORDER_ID=v_order_id
-          AND POSTCODE='CV13 0AA'
+          AND POSTCODE='CV13 6AG'
           AND FULFILMENT_PREFERENCE='CONSOLIDATE'
+          AND FULFILMENT_OPTION_CODE='COLLECTION'
+          AND DISPATCH_METHOD='COLLECTION'
           AND PAYMENT_STATUS='PENDING'
     ) THEN
         RAISE EXCEPTION 'Operational order not populated as expected.';
@@ -168,10 +191,10 @@ BEGIN
             "name":"Website Test",
             "address1":"1 Test Street",
             "town":"Hinckley",
-            "postcode":"CV13 0AA",
+            "postcode":"CV13 6AG",
             "country":"GB"
           },
-          "fulfilmentMethod":"CARRIER",
+          "fulfilmentOptionCode":"COLLECTION",
           "fulfilmentPreference":"CONSOLIDATE"
         }'::jsonb
     ) INTO v;

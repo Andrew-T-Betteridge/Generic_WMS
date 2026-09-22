@@ -1,17 +1,22 @@
-# DYNETIC WMS 0.3.11 release manifest
-# Upgrade from the validated v0.3.10 production baseline.
+# DYNETIC WMS 0.3.12 release manifest
+# Upgrade from the validated v0.3.11 production baseline.
 #
 # This migration contains:
-# - delivery-zone basket and per-class fulfilment configuration;
-# - postcode-distance calculation;
-# - richer delivery options and checkout quoting;
-# - mixed STANDARD/LIVESTOCK fulfilment persistence;
-# - staged Code-Point refresh/audit structures;
-# - DYNETIC WMS 0.3.11 system-version registration.
+# - explicit SKU physical units for carrier rating;
+# - generic read-only carrier quotation;
+# - carrier parcel length-plus-girth constraint support;
+# - configurable DISTANCE / CARRIER / combined delivery pricing;
+# - FINatics GBP 1-per-mile personal delivery through 50 miles;
+# - FINatics Meet Halfway fulfilment from 50.01 through 100 miles;
+# - FINatics Evri Standard weight-band configuration;
+# - mixed-basket together/split delivery pricing;
+# - carrier/service persistence on submitted web orders;
+# - source-controlled FINatics delivery origin and livestock carrier block;
+# - DYNETIC WMS 0.3.12 system-version registration.
 #
-# The canonical API function definitions are embedded in migration 0023,
-# so they must not also be listed separately here.
+# Canonical function definitions are embedded in migration 0024 and therefore
+# must not also be executed separately during release deployment.
 #
 # Tests, fixtures, smoke/load scripts are deliberately absent.
 
-database/migrations/0023_dynetic_wms_0_3_11.sql
+database/migrations/0024_dynetic_wms_0_3_12.sql

@@ -26,6 +26,8 @@ DECLARE
     v_standard_fulfilment_method VARCHAR(30);
     v_livestock_fulfilment_method VARCHAR(30);
     v_delivery_distance_miles NUMERIC(8,2);
+    v_carrier_id VARCHAR(50);
+    v_carrier_service_level VARCHAR(50);
     v_result RECORD;
     v_existing interface.ORDER_HEADER_IF%ROWTYPE;
     v_existing_order core.ORDER_HEADER%ROWTYPE;
@@ -88,7 +90,9 @@ BEGIN
             'orderId',v_existing.ORDER_ID,
             'paymentStatus',v_existing_order.PAYMENT_STATUS,
             'fulfilmentStatus',v_existing_order.FULFILMENT_STATUS,
-            'fulfilmentOptionCode',v_existing_order.SERVICE_LEVEL,
+            'fulfilmentOptionCode',COALESCE(v_existing_order.FULFILMENT_OPTION_CODE,v_existing_order.SERVICE_LEVEL),
+            'carrierId',v_existing_order.CARRIER_ID,
+            'serviceLevel',v_existing_order.SERVICE_LEVEL,
             'fulfilmentMethod',v_existing_order.DISPATCH_METHOD,
             'promoCode',v_existing_order.PROMO_CODE,
             'freightCost',v_existing_order.FREIGHT_COST,
@@ -463,6 +467,12 @@ BEGIN
     v_delivery_distance_miles :=
         NULLIF(v_selected->>'distanceMiles','')::NUMERIC;
 
+    v_carrier_id :=
+        NULLIF(TRIM(v_selected->>'carrierId'),'');
+
+    v_carrier_service_level :=
+        NULLIF(TRIM(v_selected->>'serviceLevel'),'');
+
     v_requires_delivery_address :=
         v_fulfilment_method IN (
             'CARRIER',
@@ -706,7 +716,9 @@ BEGIN
 
     UPDATE core.ORDER_HEADER
        SET DISPATCH_METHOD=v_fulfilment_method,
-           SERVICE_LEVEL=v_fulfilment_option_code,
+           FULFILMENT_OPTION_CODE=v_fulfilment_option_code,
+           CARRIER_ID=v_carrier_id,
+           SERVICE_LEVEL=v_carrier_service_level,
            FULFILMENT_PREFERENCE=v_fulfilment_preference,
            DELIVERY_DISTANCE_MILES=v_delivery_distance_miles,
            FREIGHT_COST=v_freight_cost,
@@ -747,6 +759,8 @@ BEGIN
         'fulfilmentPreference',v_fulfilment_preference,
         'fulfilmentPlan',v_selected->'fulfilmentPlan',
         'deliveryDistanceMiles',v_delivery_distance_miles,
+        'carrierId',v_carrier_id,
+        'serviceLevel',v_carrier_service_level,
         'promoCode',v_promo_code,
         'discountAmount',v_discount,
         'totalBeforeDelivery',v_total_before_delivery,

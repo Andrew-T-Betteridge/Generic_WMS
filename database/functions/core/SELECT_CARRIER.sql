@@ -123,6 +123,7 @@ BEGIN
             cs.MAX_LENGTH_CM,
             cs.MAX_WIDTH_CM,
             cs.MAX_HEIGHT_CM,
+            cs.MAX_LENGTH_PLUS_GIRTH_CM,
             cs.MAX_VOLUME_CM3,
             cs.BASE_COST,
             cs.COST_PER_KG,
@@ -173,6 +174,22 @@ BEGIN
             CONTINUE;
         END IF;
 
+        IF v_height IS NOT NULL
+           AND v_width IS NOT NULL
+           AND v_depth IS NOT NULL
+           AND v_candidate.MAX_LENGTH_PLUS_GIRTH_CM IS NOT NULL
+           AND (
+                GREATEST(v_height,v_width,v_depth)
+                + (
+                    2 * (
+                        (v_height + v_width + v_depth)
+                        - GREATEST(v_height,v_width,v_depth)
+                    )
+                  )
+               ) > v_candidate.MAX_LENGTH_PLUS_GIRTH_CM
+        THEN
+            CONTINUE;
+        END IF;
         -- When rules exist for a client, a service must match at least one rule
         -- that targets it (or is intentionally generic).
         v_candidate_priority := 1000000;
@@ -253,6 +270,7 @@ BEGIN
             CASE WHEN csr.POSTCODE_PREFIX IS NOT NULL THEN 0 ELSE 1 END,
             CASE WHEN csr.COUNTRY_CODE IS NOT NULL THEN 0 ELSE 1 END,
             csr.PRIORITY,
+            CASE WHEN csr.MAX_WEIGHT_KG IS NOT NULL AND v_weight = csr.MAX_WEIGHT_KG THEN 0 ELSE 1 END,
             csr.MIN_WEIGHT_KG DESC,
             csr.RATE_ID
         LIMIT 1;

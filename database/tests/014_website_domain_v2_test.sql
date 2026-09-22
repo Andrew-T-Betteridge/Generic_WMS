@@ -19,6 +19,25 @@ $dynetic_test_guard$;
 BEGIN;
 \ir ../seeds/001_finatics_fry_tray.sql
 
+-- Self-contained postcode reference data.
+INSERT INTO core.GB_POSTCODE_DIRECTORY (
+    POSTCODE,
+    POSTCODE_COMPACT,
+    OUTWARD_CODE,
+    EASTING,
+    NORTHING,
+    SOURCE
+)
+VALUES (
+    'CV13 6AG',
+    'CV136AG',
+    'CV13',
+    437758,
+    295582,
+    'OS_CODE_POINT_OPEN'
+)
+ON CONFLICT DO NOTHING;
+
 INSERT INTO core.LOCATION(LOCATION_ID,LOC_TYPE,LOCK_STATUS,VOLUME,DISALLOW_ALLOC,COUNT_NEEDED,ID,DESCRIPTION,ACTIVE,LIVESTOCK_ALLOWED)
 VALUES('WEB-V2-LOC','STORAGE','UNLOCKED',1000000,'N','N',991402,'Website Domain V2 Test','Y','Y') ON CONFLICT (LOCATION_ID) DO NOTHING;
 INSERT INTO core.INVENTORY(CLIENT_ID,SKU_ID,SITE_ID,LOCATION_ID,QTY_ON_HAND,QTY_ALLOCATED,LOCK_STATUS,RECEIPT_DSTAMP,MOVE_DSTAMP,DISALLOW_ALLOC)
@@ -30,7 +49,7 @@ INSERT INTO core.PRODUCT_MEDIA(CLIENT_ID,PRODUCT_ID,MEDIA_TYPE,MEDIA_ROLE,MEDIA_
 DO $$ DECLARE j JSONB; BEGIN
  SELECT api.GET_CATEGORIES('FINATICS') INTO j; IF jsonb_array_length(j)<1 THEN RAISE EXCEPTION 'Categories API failed: %',j; END IF;
  SELECT api.SEARCH_CATALOG('FINATICS','fry breeder',NULL,NULL,NULL) INTO j; IF jsonb_array_length(j)<>1 THEN RAISE EXCEPTION 'Search alias failed: %',j; END IF;
- SELECT api.GET_PRODUCT_MEDIA('FINATICS','FRYTRAY001') INTO j; IF jsonb_array_length(j)<>1 THEN RAISE EXCEPTION 'Media API failed: %',j; END IF;
+ SELECT api.GET_PRODUCT_MEDIA('FINATICS','FRYTRAY001') INTO j; IF jsonb_array_length(j)<1 OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(j) m WHERE m->>'url'='https://example.invalid/frytray.jpg') THEN RAISE EXCEPTION 'Media API failed: %',j; END IF;
  SELECT api.GET_PRODUCT('FINATICS','finatics-aquatics-air-driven-fry-tray') INTO j; IF j->>'productType' IS NULL OR jsonb_array_length(j->'variants')<>22 THEN RAISE EXCEPTION 'Enhanced product API failed: %',j; END IF;
 END $$;
 
@@ -40,11 +59,9 @@ DO $$ DECLARE j JSONB; BEGIN
  SELECT api.GET_INTEREST_SUMMARY('FINATICS','FRYTRAY001-S-G-W-G') INTO j; IF (j->>'activeCount')::int<>1 THEN RAISE EXCEPTION 'Interest summary failed: %',j; END IF;
 END $$;
 
-INSERT INTO config.DELIVERY_ZONE(CLIENT_ID,ZONE_ID,ZONE_NAME,FULFILMENT_METHOD,COUNTRY,POSTCODE_PREFIX,MIN_ORDER_VALUE,DELIVERY_PRICE,CURRENCY,REQUIRES_MANUAL_CONFIRMATION,PRIORITY)
-VALUES('FINATICS','LOCAL-CV13','Local delivery','LOCAL_DELIVERY','GB','CV13',20,5,'GBP',FALSE,10);
 
 DO $$ DECLARE j JSONB; BEGIN
- SELECT api.GET_DELIVERY_OPTIONS('FINATICS','{"items":[{"sku_id":"FRYTRAY001-S-G-W-G","qty":1}],"deliveryAddress":{"postcode":"CV13 0AA","country":"GB"}}'::jsonb) INTO j;
+ SELECT api.GET_DELIVERY_OPTIONS('FINATICS','{"items":[{"sku_id":"FRYTRAY001-S-G-W-G","qty":1}],"deliveryAddress":{"postcode":"CV13 6AG","country":"GB"}}'::jsonb) INTO j;
  IF NOT (j->>'valid')::boolean OR jsonb_array_length(j->'fulfilmentOptions')<2 THEN RAISE EXCEPTION 'Delivery options failed: %',j; END IF;
 END $$;
 
@@ -70,9 +87,9 @@ END $$;
 
 
 DO $$ DECLARE j JSONB; rid UUID; BEGIN
- SELECT api.CREATE_STOCK_RESERVATION('FINATICS','{"idempotencyKey":"V2-RES-CONVERT","holdMinutes":60,"customer":{"name":"Convert Test","email":"convert@example.invalid"},"fulfilmentMethod":"COLLECTION","items":[{"sku_id":"FRYTRAY001-S-G-W-G","qty":1}]}'::jsonb) INTO j;
+ SELECT api.CREATE_STOCK_RESERVATION('FINATICS','{"idempotencyKey":"V2-RES-CONVERT","holdMinutes":60,"customer":{"name":"Convert Test","email":"convert@example.invalid","phone":"07000000000"},"fulfilmentMethod":"COLLECTION","items":[{"sku_id":"FRYTRAY001-S-G-W-G","qty":1}]}'::jsonb) INTO j;
  rid:=(j->>'reservationId')::uuid;
- SELECT api.SUBMIT_RESERVED_WEB_ORDER('FINATICS',rid,'{"idempotencyKey":"V2-ORDER-CONVERT","customer":{"name":"Convert Test","email":"convert@example.invalid"},"deliveryAddress":{"name":"Convert Test","address1":"1 Test Street","town":"Hinckley","postcode":"CV13 0AA","country":"GB"},"fulfilmentMethod":"COLLECTION","fulfilmentPreference":"CONSOLIDATE"}'::jsonb) INTO j;
+ SELECT api.SUBMIT_RESERVED_WEB_ORDER('FINATICS',rid,'{"idempotencyKey":"V2-ORDER-CONVERT","customer":{"name":"Convert Test","email":"convert@example.invalid","phone":"07000000000"},"deliveryAddress":{"name":"Convert Test","address1":"1 Test Street","town":"Hinckley","postcode":"CV13 6AG","country":"GB"},"fulfilmentOptionCode":"COLLECTION","fulfilmentPreference":"CONSOLIDATE"}'::jsonb) INTO j;
  IF j->>'status'<>'ACCEPTED' OR NOT COALESCE((j->>'reservationConverted')::boolean,FALSE) OR j->>'allocationStatus'<>'ALLOCATED' THEN RAISE EXCEPTION 'Reservation conversion failed: %',j; END IF;
  IF NOT EXISTS(SELECT 1 FROM core.STOCK_RESERVATION WHERE RESERVATION_ID=rid AND STATUS='CONVERTED' AND CONVERTED_ORDER_ID=j->>'orderId') THEN RAISE EXCEPTION 'Reservation was not marked converted'; END IF;
 END $$;
@@ -94,7 +111,7 @@ DO $$ DECLARE j JSONB; BEGIN
 END $$;
 
 DO $$ DECLARE j JSONB; BEGIN
- SELECT api.QUOTE_CHECKOUT('FINATICS','{"items":[{"sku_id":"FRYTRAY001-S-G-W-G","qty":1}],"deliveryAddress":{"postcode":"CV13 0AA","country":"GB"},"promoCode":"WELCOME10"}'::jsonb) INTO j;
+ SELECT api.QUOTE_CHECKOUT('FINATICS','{"items":[{"sku_id":"FRYTRAY001-S-G-W-G","qty":1}],"deliveryAddress":{"postcode":"CV13 6AG","country":"GB"},"promoCode":"WELCOME10"}'::jsonb) INTO j;
  IF NOT (j->>'valid')::boolean OR (j->>'discountAmount')::numeric<>2.70 THEN RAISE EXCEPTION 'V2 quote failed: %',j; END IF;
 END $$;
 
