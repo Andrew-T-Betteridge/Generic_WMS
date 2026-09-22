@@ -46,9 +46,9 @@ if [[ "$TARGET" == "PROD" ]]; then
   [[ -z "$(git -C "$REPO_ROOT" status --porcelain --untracked-files=no)" ]] ||
     stop "Tracked working-tree changes exist."
 
-  TAG="$(git -C "$REPO_ROOT" tag --points-at HEAD 'dynetic-wms-v0.3.9' || true)"
-  [[ "$TAG" == "dynetic-wms-v0.3.9" ]] ||
-    stop "PROD requires HEAD tagged exactly dynetic-wms-v0.3.9."
+  TAG="$(git -C "$REPO_ROOT" tag --points-at HEAD 'dynetic-wms-v0.3.10' || true)"
+  [[ "$TAG" == "dynetic-wms-v0.3.10" ]] ||
+    stop "PROD requires HEAD tagged exactly dynetic-wms-v0.3.10."
 fi
 
 mapfile -t ENTRIES < <(grep -vE '^[[:space:]]*(#|$)' "$MANIFEST")

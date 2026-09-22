@@ -7,7 +7,7 @@ BEGIN
  v_postcode:=regexp_replace(UPPER(COALESCE(p_payload#>>'{deliveryAddress,postcode}','')),'[[:space:]]','','g');
  v_country:=UPPER(COALESCE(NULLIF(TRIM(p_payload#>>'{deliveryAddress,country}'),''),'GB'));
  v_subtotal:=COALESCE((v_basket->>'subtotal')::numeric,0); v_has_livestock:=COALESCE((v_basket->>'hasLivestock')::boolean,FALSE);
- v_options:=v_options||jsonb_build_array(jsonb_build_object('code','COLLECTION','label','Collection by arrangement','fulfilmentMethod','COLLECTION','price',0,'currency',v_basket->>'currency','requiresManualConfirmation',TRUE));
+ v_options:=v_options||jsonb_build_array(jsonb_build_object('code','COLLECTION','label','Collection','fulfilmentMethod','COLLECTION','price',0,'currency',v_basket->>'currency','requiresManualConfirmation',FALSE));
  FOR z IN SELECT * FROM config.DELIVERY_ZONE dz WHERE dz.CLIENT_ID=p_client_id AND dz.ACTIVE=TRUE AND UPPER(dz.COUNTRY)=v_country AND (dz.POSTCODE_PREFIX IS NULL OR v_postcode LIKE regexp_replace(UPPER(dz.POSTCODE_PREFIX),'[[:space:]]','','g')||'%') AND (dz.MIN_ORDER_VALUE IS NULL OR v_subtotal>=dz.MIN_ORDER_VALUE) ORDER BY dz.PRIORITY LOOP
    v_options:=v_options||jsonb_build_array(jsonb_build_object('code',z.ZONE_ID,'label',z.ZONE_NAME,'fulfilmentMethod',z.FULFILMENT_METHOD,'price',z.DELIVERY_PRICE,'currency',z.CURRENCY,'requiresManualConfirmation',z.REQUIRES_MANUAL_CONFIRMATION));
  END LOOP;
