@@ -1,3 +1,5 @@
+import { db } from "./db.js";
+
 export interface AddressSearchItem {
   id: string;
   label: string;
@@ -60,9 +62,7 @@ function configuredProvider() {
 }
 
 function apiKey() {
-  const provider = configuredProvider();
-
-  if (provider !== "IDEAL_POSTCODES") {
+  if (configuredProvider() !== "IDEAL_POSTCODES") {
     throw new AddressLookupError("ADDRESS_LOOKUP_UNAVAILABLE", 503);
   }
 
@@ -94,6 +94,24 @@ function normaliseCountry(value: string) {
 
 function clean(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function compactPostcode(value: string) {
+  return value.toUpperCase().replace(/\s+/gu, "");
+}
+
+function validatePostcodeQuery(value: string) {
+  const compact = compactPostcode(value);
+
+  if (compact.length < 3) {
+    throw new AddressLookupError("ADDRESS_LOOKUP_QUERY_TOO_SHORT", 400);
+  }
+
+  if (compact.length > 7 || !/^[A-Z0-9]+$/u.test(compact)) {
+    throw new AddressLookupError("ADDRESS_LOOKUP_QUERY_INVALID", 400);
+  }
+
+  return compact;
 }
 
 async function idealPostcodesGet<T>(
@@ -147,6 +165,85 @@ async function idealPostcodesGet<T>(
   }
 }
 
+async function searchDyneticPostcodes(query: string): Promise<AddressSearchItem[]> {
+  const compact = validatePostcodeQuery(query);
+
+  try {
+    const outwardExists = await db.query(
+      `
+        select exists(
+          select 1
+          from core.gb_postcode_directory
+          where outward_code = $1
+        ) as exists
+      `,
+      [compact],
+    );
+
+    const useOutward = outwardExists.rows[0]?.exists === true;
+
+    const result = await db.query(
+      `
+        select postcode, postcode_compact
+        from core.gb_postcode_directory
+        where
+          ($1::boolean = true and outward_code = $2)
+          or
+          ($1::boolean = false and postcode_compact like $3)
+        order by
+          case when postcode_compact = $2 then 0 else 1 end,
+          postcode
+        limit $4
+      `,
+      [useOutward, compact, `${compact}%`, SEARCH_LIMIT],
+    );
+
+    return result.rows.map((row) => ({
+      id: `postcode:${String(row.postcode_compact)}`,
+      label: String(row.postcode),
+    }));
+  } catch {
+    throw new AddressLookupError("ADDRESS_LOOKUP_UNAVAILABLE", 503);
+  }
+}
+
+async function resolveDyneticPostcode(id: string): Promise<ResolvedAddress> {
+  const raw = id.startsWith("postcode:") ? id.slice("postcode:".length) : id;
+  const compact = compactPostcode(raw);
+
+  if (!compact || compact.length > 7 || !/^[A-Z0-9]+$/u.test(compact)) {
+    throw new AddressLookupError("ADDRESS_LOOKUP_NOT_FOUND", 404);
+  }
+
+  try {
+    const result = await db.query(
+      `
+        select postcode
+        from core.gb_postcode_directory
+        where postcode_compact = $1
+        limit 1
+      `,
+      [compact],
+    );
+
+    if (result.rows.length === 0) {
+      throw new AddressLookupError("ADDRESS_LOOKUP_NOT_FOUND", 404);
+    }
+
+    return {
+      address1: null,
+      address2: null,
+      town: null,
+      county: null,
+      postcode: String(result.rows[0].postcode),
+      country: "GB",
+    };
+  } catch (error) {
+    if (error instanceof AddressLookupError) throw error;
+    throw new AddressLookupError("ADDRESS_LOOKUP_UNAVAILABLE", 503);
+  }
+}
+
 export async function searchUkAddresses(
   query: string,
   country = "GB",
@@ -162,6 +259,16 @@ export async function searchUkAddresses(
   }
 
   normaliseCountry(country);
+
+  const provider = configuredProvider();
+
+  if (provider === "DYNETIC_OPEN_DATA") {
+    return searchDyneticPostcodes(q);
+  }
+
+  if (provider !== "IDEAL_POSTCODES") {
+    throw new AddressLookupError("ADDRESS_LOOKUP_UNAVAILABLE", 503);
+  }
 
   const result = await idealPostcodesGet<{ hits?: IdealAddressHit[] }>(
     "/autocomplete/addresses",
@@ -182,6 +289,16 @@ export async function searchUkAddresses(
 }
 
 export async function resolveUkAddress(id: string): Promise<ResolvedAddress> {
+  const provider = configuredProvider();
+
+  if (provider === "DYNETIC_OPEN_DATA") {
+    return resolveDyneticPostcode(id);
+  }
+
+  if (provider !== "IDEAL_POSTCODES") {
+    throw new AddressLookupError("ADDRESS_LOOKUP_UNAVAILABLE", 503);
+  }
+
   const addressId = id.trim();
 
   if (!addressId || addressId.length > 200) {
