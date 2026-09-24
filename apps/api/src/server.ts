@@ -4,7 +4,9 @@ import crypto from "node:crypto";
 import { SignJWT, jwtVerify } from "jose";
 import "dotenv/config";
 import { db } from "./db.js";
-import { optionalIdentity, requireAdmin, requireIdentity } from "./auth.js";
+import { optionalIdentity, requireIdentity } from "./auth.js";
+import { registerAdminAccessRoutes, requirePermission } from "./admin-rbac.js";
+import { registerAdminManagementRoutes } from "./admin-management.js";
 import { createStripePaymentIntent, createStripeRefund, normaliseStripeEvent, verifyStripeSignature } from "./stripe.js";
 import { AddressLookupError, resolveUkAddress, searchUkAddresses } from "./address.js";
 
@@ -352,22 +354,25 @@ app.post("/api/webhooks/stripe",async(req,reply)=>{
   }catch(e){req.log.error(e);return reply.code(400).send({error:errorCode(e)});}
 });
 
+registerAdminAccessRoutes(app, clientId);
+registerAdminManagementRoutes(app, clientId);
+
 /* ADMIN ONLY */
 app.get("/api/admin/interests/summary",async(req,reply)=>{
-  try{await requireAdmin(req,clientId);const x=req.query as {skuId:string};return await q("select api.GET_INTEREST_SUMMARY($1,$2) as data",[clientId,x.skuId]);}
+  try{await requirePermission(req,clientId,"customer.read");const x=req.query as {skuId:string};return await q("select api.GET_INTEREST_SUMMARY($1,$2) as data",[clientId,x.skuId]);}
   catch(e){return reply.code(403).send({error:errorCode(e)});}
 });
 app.post("/api/admin/reviews/:reviewId/moderate",async(req,reply)=>{
-  try{await requireAdmin(req,clientId);const {reviewId}=req.params as {reviewId:string};return await q("select api.MODERATE_PRODUCT_REVIEW($1,$2::uuid,$3::jsonb) as data",[clientId,reviewId,JSON.stringify(req.body??{})]);}
+  try{await requirePermission(req,clientId,"review.moderate");const {reviewId}=req.params as {reviewId:string};return await q("select api.MODERATE_PRODUCT_REVIEW($1,$2::uuid,$3::jsonb) as data",[clientId,reviewId,JSON.stringify(req.body??{})]);}
   catch(e){return reply.code(403).send({error:errorCode(e)});}
 });
 app.get("/api/admin/affiliate/demand",async(req,reply)=>{
-  try{await requireAdmin(req,clientId);return await q("select api.GET_AFFILIATE_DEMAND($1) as data",[clientId]);}
+  try{await requirePermission(req,clientId,"affiliate.read");return await q("select api.GET_AFFILIATE_DEMAND($1) as data",[clientId]);}
   catch(e){return reply.code(403).send({error:errorCode(e)});}
 });
 app.post("/api/admin/reservations/expire",async(req,reply)=>{
   try{
-    await requireAdmin(req,clientId);
+    await requirePermission(req,clientId,"reservation.expire");
     const reservations=await q("select api.EXPIRE_STOCK_RESERVATIONS($1) as data",[clientId]);
     const orders=await q("select api.EXPIRE_PENDING_PAYMENT_ORDERS($1) as data",[clientId]);
     return {reservations,orders};
@@ -375,7 +380,7 @@ app.post("/api/admin/reservations/expire",async(req,reply)=>{
 });
 app.post("/api/admin/payments/:paymentId/refund",async(req,reply)=>{
   try{
-    await requireAdmin(req,clientId);
+    await requirePermission(req,clientId,"payment.refund");
     const {paymentId}=req.params as {paymentId:string};
     const b=req.body as {amount?:number};
     const r=await db.query("select PROVIDER,PROVIDER_REFERENCE,AMOUNT,REFUNDED_AMOUNT from core.PAYMENT_TRANSACTION where CLIENT_ID=$1 and PAYMENT_ID=$2::uuid",[clientId,paymentId]);
