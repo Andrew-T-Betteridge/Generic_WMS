@@ -8,6 +8,8 @@ import { optionalIdentity, requireIdentity } from "./auth.js";
 import { auditAdminChange, registerAdminAccessRoutes, requirePermission } from "./admin-rbac.js";
 import { registerAdminManagementRoutes } from "./admin-management.js";
 import { registerAdminOperationRoutes } from "./admin-operations.js";
+import { registerAdminMonitoringRoutes } from "./admin-monitoring.js";
+import { startNotificationDispatcher } from "./notification-dispatcher.js";
 import { createStripePaymentIntent, createStripeRefund, normaliseStripeEvent, verifyStripeSignature } from "./stripe.js";
 import { AddressLookupError, resolveUkAddress, searchUkAddresses } from "./address.js";
 
@@ -365,6 +367,8 @@ app.post("/api/webhooks/stripe",async(req,reply)=>{
 registerAdminAccessRoutes(app, clientId);
 registerAdminManagementRoutes(app, clientId);
 registerAdminOperationRoutes(app, clientId);
+registerAdminMonitoringRoutes(app, clientId);
+startNotificationDispatcher();
 
 /* ADMIN ONLY */
 app.get("/api/admin/interests/summary",async(req,reply)=>{
