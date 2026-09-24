@@ -7,6 +7,7 @@ import { db } from "./db.js";
 import { optionalIdentity, requireIdentity } from "./auth.js";
 import { auditAdminChange, registerAdminAccessRoutes, requirePermission } from "./admin-rbac.js";
 import { registerAdminManagementRoutes } from "./admin-management.js";
+import { registerAdminOperationRoutes } from "./admin-operations.js";
 import { createStripePaymentIntent, createStripeRefund, normaliseStripeEvent, verifyStripeSignature } from "./stripe.js";
 import { AddressLookupError, resolveUkAddress, searchUkAddresses } from "./address.js";
 
@@ -31,7 +32,7 @@ declare module "fastify" {
 app.addContentTypeParser("application/json",{parseAs:"buffer"},(req,body,done)=>{
   try {
     req.rawJsonBody = body as Buffer;
-    done(null,JSON.parse((body as Buffer).toString("utf8")));
+    const text=(body as Buffer).toString("utf8"); done(null,text.trim()?JSON.parse(text):{});
   } catch (e) { done(e as Error,undefined); }
 });
 
@@ -363,6 +364,7 @@ app.post("/api/webhooks/stripe",async(req,reply)=>{
 
 registerAdminAccessRoutes(app, clientId);
 registerAdminManagementRoutes(app, clientId);
+registerAdminOperationRoutes(app, clientId);
 
 /* ADMIN ONLY */
 app.get("/api/admin/interests/summary",async(req,reply)=>{

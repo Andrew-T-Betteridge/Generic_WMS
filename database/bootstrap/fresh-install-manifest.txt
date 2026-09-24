@@ -20,3 +20,5 @@ database/migrations/0021_dynetic_wms_0_3_9.sql
 database/migrations/0022_dynetic_wms_0_3_10.sql
 database/migrations/0023_dynetic_wms_0_3_11.sql
 database/migrations/0024_dynetic_wms_0_3_12.sql
+database/migrations/0025_admin_portal_rbac.sql
+database/migrations/0026_admin_operations.sql
