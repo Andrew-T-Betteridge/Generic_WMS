@@ -126,14 +126,23 @@ export async function resolveAdminPrincipal(
   if (local) return local;
 
   if (legacyAdmin(identity)) {
-    return {
-      ...identity,
-      adminUserId: null,
-      displayName: null,
-      localRoles: [],
-      permissions: ["*"],
-      bootstrap: true,
-    };
+    const existing = await db.query(
+      `select count(*)::int as count
+         from config.ADMIN_USER
+        where CLIENT_ID=$1`,
+      [clientId],
+    );
+
+    if (Number(existing.rows[0]?.count ?? 0) === 0) {
+      return {
+        ...identity,
+        adminUserId: null,
+        displayName: null,
+        localRoles: [],
+        permissions: ["*"],
+        bootstrap: true,
+      };
+    }
   }
 
   throw new Error("ADMIN_ACCESS_REQUIRED");
@@ -186,15 +195,20 @@ function replyAdminError(reply: FastifyReply, error: unknown) {
   const status =
     code === "AUTHENTICATION_REQUIRED"
       ? 401
-      : code === "ADMIN_USER_NOT_FOUND"
+      : code === "ADMIN_USER_NOT_FOUND" || code.endsWith("_NOT_FOUND")
         ? 404
-        : code.endsWith("_NOT_FOUND")
-          ? 404
-          : code.includes("ALREADY_EXISTS")
+        : code.includes("ALREADY_EXISTS")
+          ? 409
+          : code === "LAST_OWNER_PROTECTED"
             ? 409
-            : code.startsWith("INVALID_") || code.endsWith("_REQUIRED")
-              ? 400
-              : 403;
+            : code === "ADMIN_ACCESS_REQUIRED" ||
+                code === "ADMIN_ROLE_REQUIRED" ||
+                code === "ADMIN_USER_DISABLED" ||
+                code === "PERMISSION_REQUIRED"
+              ? 403
+              : code.startsWith("INVALID_") || code.endsWith("_REQUIRED")
+                ? 400
+                : 403;
   return reply.code(status).send({ error: code });
 }
 
@@ -384,8 +398,7 @@ export function registerAdminAccessRoutes(
         throw new Error("INVALID_ROLE_CODE");
       if (!roleName || roleName.length > 80)
         throw new Error("INVALID_ROLE_NAME");
-      if (!(await roleCodesExist(clientId, [])))
-        throw new Error("INVALID_ROLE");
+
       if (
         permissions.length &&
         Number(

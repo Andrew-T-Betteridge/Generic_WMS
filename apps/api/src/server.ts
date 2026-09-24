@@ -5,15 +5,22 @@ import { SignJWT, jwtVerify } from "jose";
 import "dotenv/config";
 import { db } from "./db.js";
 import { optionalIdentity, requireIdentity } from "./auth.js";
-import { registerAdminAccessRoutes, requirePermission } from "./admin-rbac.js";
+import { auditAdminChange, registerAdminAccessRoutes, requirePermission } from "./admin-rbac.js";
 import { registerAdminManagementRoutes } from "./admin-management.js";
 import { createStripePaymentIntent, createStripeRefund, normaliseStripeEvent, verifyStripeSignature } from "./stripe.js";
 import { AddressLookupError, resolveUkAddress, searchUkAddresses } from "./address.js";
 
 const app = Fastify({ logger: true });
 const clientId = process.env.DEFAULT_CLIENT_ID ?? "FINATICS";
+const allowedOrigins = [
+  ...(process.env.STORE_FRONT_ORIGIN ?? "http://localhost:5173").split(","),
+  ...(process.env.ADMIN_ORIGIN ?? "").split(","),
+]
+  .map((x) => x.trim())
+  .filter(Boolean);
+
 await app.register(cors,{
-  origin: process.env.STORE_FRONT_ORIGIN ?? "http://localhost:5173",
+  origin: allowedOrigins,
   credentials: true
 });
 
@@ -360,27 +367,36 @@ registerAdminManagementRoutes(app, clientId);
 /* ADMIN ONLY */
 app.get("/api/admin/interests/summary",async(req,reply)=>{
   try{await requirePermission(req,clientId,"customer.read");const x=req.query as {skuId:string};return await q("select api.GET_INTEREST_SUMMARY($1,$2) as data",[clientId,x.skuId]);}
-  catch(e){return reply.code(403).send({error:errorCode(e)});}
+  catch(e){return reply.code(errorCode(e)==="AUTHENTICATION_REQUIRED"?401:403).send({error:errorCode(e)});}
 });
 app.post("/api/admin/reviews/:reviewId/moderate",async(req,reply)=>{
-  try{await requirePermission(req,clientId,"review.moderate");const {reviewId}=req.params as {reviewId:string};return await q("select api.MODERATE_PRODUCT_REVIEW($1,$2::uuid,$3::jsonb) as data",[clientId,reviewId,JSON.stringify(req.body??{})]);}
-  catch(e){return reply.code(403).send({error:errorCode(e)});}
+  try{
+    const principal=await requirePermission(req,clientId,"review.moderate");
+    const {reviewId}=req.params as {reviewId:string};
+    const requestBody=req.body??{};
+    const result=await q("select api.MODERATE_PRODUCT_REVIEW($1,$2::uuid,$3::jsonb) as data",[clientId,reviewId,JSON.stringify(requestBody)]);
+    await auditAdminChange(clientId,principal,"PRODUCT_REVIEW",reviewId,"MODERATE",null,{request:requestBody,result});
+    return result;
+  }
+  catch(e){return reply.code(errorCode(e)==="AUTHENTICATION_REQUIRED"?401:403).send({error:errorCode(e)});}
 });
 app.get("/api/admin/affiliate/demand",async(req,reply)=>{
   try{await requirePermission(req,clientId,"affiliate.read");return await q("select api.GET_AFFILIATE_DEMAND($1) as data",[clientId]);}
-  catch(e){return reply.code(403).send({error:errorCode(e)});}
+  catch(e){return reply.code(errorCode(e)==="AUTHENTICATION_REQUIRED"?401:403).send({error:errorCode(e)});}
 });
 app.post("/api/admin/reservations/expire",async(req,reply)=>{
   try{
-    await requirePermission(req,clientId,"reservation.expire");
+    const principal=await requirePermission(req,clientId,"reservation.expire");
     const reservations=await q("select api.EXPIRE_STOCK_RESERVATIONS($1) as data",[clientId]);
     const orders=await q("select api.EXPIRE_PENDING_PAYMENT_ORDERS($1) as data",[clientId]);
-    return {reservations,orders};
-  } catch(e){return reply.code(403).send({error:errorCode(e)});}
+    const result={reservations,orders};
+    await auditAdminChange(clientId,principal,"RESERVATION_EXPIRY","MANUAL","RUN",null,result);
+    return result;
+  } catch(e){return reply.code(errorCode(e)==="AUTHENTICATION_REQUIRED"?401:403).send({error:errorCode(e)});}
 });
 app.post("/api/admin/payments/:paymentId/refund",async(req,reply)=>{
   try{
-    await requirePermission(req,clientId,"payment.refund");
+    const principal=await requirePermission(req,clientId,"payment.refund");
     const {paymentId}=req.params as {paymentId:string};
     const b=req.body as {amount?:number};
     const r=await db.query("select PROVIDER,PROVIDER_REFERENCE,AMOUNT,REFUNDED_AMOUNT from core.PAYMENT_TRANSACTION where CLIENT_ID=$1 and PAYMENT_ID=$2::uuid",[clientId,paymentId]);
@@ -390,8 +406,13 @@ app.post("/api/admin/payments/:paymentId/refund",async(req,reply)=>{
     const max=Number(p.amount)-Number(p.refunded_amount);
     const amount=b.amount==null?undefined:Number(b.amount);
     if(amount!=null && (amount<=0 || amount>max))return reply.code(400).send({error:"INVALID_REFUND_AMOUNT"});
-    return reply.code(202).send(await createStripeRefund(p.provider_reference,amount));
-  }catch(e){req.log.error(e);return reply.code(403).send({error:errorCode(e)});}
+    const result=await createStripeRefund(p.provider_reference,amount);
+    await auditAdminChange(clientId,principal,"PAYMENT_TRANSACTION",paymentId,"REFUND_REQUESTED",p,{requestedAmount:amount??max,result});
+    return reply.code(202).send(result);
+  }catch(e){
+    req.log.error(e);
+    return reply.code(errorCode(e)==="AUTHENTICATION_REQUIRED"?401:403).send({error:errorCode(e)});
+  }
 });
 
 const port=Number(process.env.PORT??3001);
