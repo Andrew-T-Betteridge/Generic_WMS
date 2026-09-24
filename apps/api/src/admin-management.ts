@@ -542,33 +542,37 @@ export function registerAdminManagementRoutes(
       const result = await db.query(
         `select
             oh.ORDER_ID,
+            oh.ORDER_REFERENCE,
             oh.ORDER_DATE,
             oh.STATUS,
             oh.PAYMENT_STATUS,
             oh.FULFILMENT_STATUS,
             oh.DISPATCH_METHOD,
-            oh.FULFILMENT_OPTION_CODE,
             oh.CARRIER_ID,
             oh.SERVICE_LEVEL,
             oh.ORDER_VALUE,
             oh.FREIGHT_COST,
-            oh.CURRENCY,
+            oh.INV_CURRENCY as CURRENCY,
             oh.CUSTOMER_ID,
-            oh.ADDRESS_ID,
-            a.CONTACT,
-            a.CONTACT_EMAIL,
-            a.CONTACT_PHONE,
-            a.POSTCODE,
+            oh.NAME,
+            oh.CONTACT,
+            oh.CONTACT_EMAIL,
+            oh.CONTACT_PHONE,
+            oh.CONTACT_MOBILE,
+            oh.POSTCODE,
+            oh.TOWN,
+            oh.COUNTY,
+            oh.COUNTRY,
             oh.LAST_UPDATE_DATE
            from core.ORDER_HEADER oh
-           left join core.ADDRESS a
-             on a.CLIENT_ID=oh.CLIENT_ID and a.ADDRESS_ID=oh.ADDRESS_ID
           where oh.CLIENT_ID=$1
             and ($2::text is null
               or oh.ORDER_ID ilike '%'||$2||'%'
-              or a.CONTACT ilike '%'||$2||'%'
-              or a.CONTACT_EMAIL ilike '%'||$2||'%'
-              or a.POSTCODE ilike '%'||$2||'%')
+              or COALESCE(oh.ORDER_REFERENCE,'') ilike '%'||$2||'%'
+              or COALESCE(oh.NAME,'') ilike '%'||$2||'%'
+              or COALESCE(oh.CONTACT,'') ilike '%'||$2||'%'
+              or COALESCE(oh.CONTACT_EMAIL,'') ilike '%'||$2||'%'
+              or COALESCE(oh.POSTCODE,'') ilike '%'||$2||'%')
             and ($3::varchar is null or oh.STATUS=$3)
             and ($4::varchar is null or oh.PAYMENT_STATUS=$4)
           order by oh.ORDER_DATE desc,oh.ORDER_ID desc
@@ -593,10 +597,22 @@ export function registerAdminManagementRoutes(
       await requirePermission(req, clientId, "order.read");
       const { orderId } = req.params as { orderId: string };
       const order = await db.query(
-        `select oh.*,row_to_json(a) as DELIVERY_ADDRESS
+        `select
+            oh.*,
+            jsonb_build_object(
+              'name',oh.NAME,
+              'contact',oh.CONTACT,
+              'contactPhone',oh.CONTACT_PHONE,
+              'contactMobile',oh.CONTACT_MOBILE,
+              'contactEmail',oh.CONTACT_EMAIL,
+              'address1',oh.ADDRESS1,
+              'address2',oh.ADDRESS2,
+              'town',oh.TOWN,
+              'county',oh.COUNTY,
+              'postcode',oh.POSTCODE,
+              'country',oh.COUNTRY
+            ) as DELIVERY_ADDRESS
            from core.ORDER_HEADER oh
-           left join core.ADDRESS a
-             on a.CLIENT_ID=oh.CLIENT_ID and a.ADDRESS_ID=oh.ADDRESS_ID
           where oh.CLIENT_ID=$1 and oh.ORDER_ID=$2`,
         [clientId, orderId],
       );

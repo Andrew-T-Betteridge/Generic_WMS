@@ -5,10 +5,10 @@ type Token=()=>Promise<string>;
 
 const BASE=(import.meta.env.VITE_API_BASE_URL||"https://api.finaticsaquatics.co.uk").replace(/\/$/,"");
 const get=(r:Obj,...k:string[])=>{for(const x of k)if(r[x]!==undefined)return r[x]};
-const txt=(v:unknown,f="â€”")=>v===null||v===undefined||v===""?f:String(v);
+const txt=(v:unknown,f="-")=>v===null||v===undefined||v===""?f:String(v);
 const num=(v:unknown)=>Number.isFinite(Number(v))?Number(v):0;
-const money=(v:unknown,c="GBP")=>Number.isFinite(Number(v))?new Intl.NumberFormat("en-GB",{style:"currency",currency:c}).format(Number(v)):"â€”";
-const dt=(v:unknown)=>{if(!v)return"â€”";const d=new Date(String(v));return Number.isNaN(d.getTime())?String(v):d.toLocaleString("en-GB")};
+const money=(v:unknown,c="GBP")=>Number.isFinite(Number(v))?new Intl.NumberFormat("en-GB",{style:"currency",currency:c}).format(Number(v)):"-";
+const dt=(v:unknown)=>{if(!v)return"-";const d=new Date(String(v));return Number.isNaN(d.getTime())?String(v):d.toLocaleString("en-GB")};
 const Q=(x:Obj)=>{const s=new URLSearchParams();Object.entries(x).forEach(([k,v])=>{if(v!==undefined&&v!==null&&v!=="")s.set(k,String(v))});return s.size?`?${s}`:""};
 
 async function req<T>(token:Token,path:string,init:RequestInit={}):Promise<T>{
@@ -26,7 +26,7 @@ async function req<T>(token:Token,path:string,init:RequestInit={}):Promise<T>{
 
 function Btn({children,onClick,disabled,kind=""}:{children:React.ReactNode;onClick?:()=>void;disabled?:boolean;kind?:string}){return <button className={`btn ${kind}`} onClick={onClick} disabled={disabled}>{children}</button>}
 function Pill({children,tone=""}:{children:React.ReactNode;tone?:string}){return <span className={`pill ${tone}`}>{children}</span>}
-function Load(){return <div className="load"><i/>Loadingâ€¦</div>}
+function Load(){return <div className="load"><i/>Loading...</div>}
 function Err({e}:{e:unknown}){return <div className="error"><strong>Operation could not be completed</strong><span>{e instanceof Error?e.message:String(e)}</span></div>}
 function Modal({title,onClose,children}:{title:string;onClose:()=>void;children:React.ReactNode}){return <div className="shade" onMouseDown={e=>{if(e.target===e.currentTarget)onClose()}}><div className="modal"><div className="modalhead"><h2>{title}</h2><Btn kind="ghost" onClick={onClose}>Close</Btn></div><div className="modalbody">{children}</div></div></div>}
 
@@ -45,7 +45,7 @@ export function InventoryOperations({token,canAdjust}:{token:Token;canAdjust:boo
     <div className="head"><div><h1>Inventory</h1><p>Live stock with audited adjustment controls. Allocated stock can never be reduced below its reservation.</p></div><Btn kind="ghost" onClick={()=>setNonce(x=>x+1)}>Refresh</Btn></div>
     <div className="opstats"><div><span>Rows</span><strong>{rows.length}</strong></div><div><span>On hand</span><strong>{totals.on}</strong></div><div><span>Allocated</span><strong>{totals.alloc}</strong></div><div><span>Available</span><strong>{totals.avail}</strong></div></div>
     <section className="card">
-      <div className="toolbar"><input className="input search" value={q} onChange={x=>setQ(x.target.value)} placeholder="Search SKU, product, tag, batch or locationâ€¦"/><span>{canAdjust?"Adjustments enabled":"Read only"}</span></div>
+      <div className="toolbar"><input className="input search" value={q} onChange={x=>setQ(x.target.value)} placeholder="Search SKU, product, tag, batch or location..."/><span>{canAdjust?"Adjustments enabled":"Read only"}</span></div>
       {e?<Err e={e}/>:loading?<Load/>:<div className="tablewrap"><table><thead><tr><th>Product / SKU</th><th>Location</th><th>On hand</th><th>Allocated</th><th>Available</th><th>Condition</th><th>Last movement</th><th/></tr></thead><tbody>
         {rows.map((r,i)=>{const key=txt(get(r,"inventory_key","INVENTORY_KEY"),String(i));const available=num(get(r,"qty_available","QTY_AVAILABLE"));return <tr key={key}>
           <td><strong>{txt(get(r,"product_name","PRODUCT_NAME","variant_name","VARIANT_NAME"))}</strong><small>{txt(get(r,"sku_id","SKU_ID"))} Â· stock row #{key}</small></td>
@@ -83,7 +83,7 @@ function AdjustModal({token,row,onClose,onDone}:{token:Token;row:Obj;onClose:()=
       <label>Notes<textarea className="input textarea" maxLength={400} value={notes} onChange={x=>setNotes(x.target.value)} placeholder="Why is the stock changing?"/></label>
       {unsafe&&<div className="warningbox">That adjustment would leave on-hand stock below zero or below the quantity already allocated. DYNETIC will reject it.</div>}
       {e?<Err e={e}/>:null}
-      <div className="actions"><Btn kind="ghost" onClick={onClose}>Cancel</Btn><Btn disabled={saving||!qty||Number(qty)===0||unsafe} onClick={save}>{saving?"Adjustingâ€¦":"Confirm adjustment"}</Btn></div>
+      <div className="actions"><Btn kind="ghost" onClick={onClose}>Cancel</Btn><Btn disabled={saving||!qty||Number(qty)===0||unsafe} onClick={save}>{saving?"Adjusting...":"Confirm adjustment"}</Btn></div>
     </div>}
   </Modal>;
 }
@@ -96,8 +96,8 @@ export function OrdersOperations({token,canCancel}:{token:Token;canCancel:boolea
 
   return <>
     <div className="head"><div><h1>Orders</h1><p>Operational order visibility with protected cancellation. Picked or shipped orders cannot be cancelled here.</p></div><Btn kind="ghost" onClick={()=>setNonce(x=>x+1)}>Refresh</Btn></div>
-    <section className="card"><div className="toolbar"><input className="input search" value={q} onChange={x=>setQ(x.target.value)} placeholder="Search order, customer or statusâ€¦"/><span>{rows.length} orders</span></div>
-    {e?<Err e={e}/>:loading?<Load/>:<div className="tablewrap"><table><thead><tr><th>Order</th><th>Customer</th><th>Status</th><th>Payment</th><th>Fulfilment</th><th>Value</th></tr></thead><tbody>{rows.map((r,i)=><tr className="click" key={txt(get(r,"order_id","ORDER_ID","orderId"),String(i))} onClick={()=>setSel(r)}><td><strong>{txt(get(r,"order_id","ORDER_ID","orderId","order_reference","ORDER_REFERENCE"))}</strong><small>{dt(get(r,"order_date","ORDER_DATE","created_dstamp"))}</small></td><td>{txt(get(r,"customer_email","CUSTOMER_EMAIL","email","CONTACT_EMAIL"))}</td><td><Pill>{txt(get(r,"status","STATUS"))}</Pill></td><td><Pill tone={txt(get(r,"payment_status","PAYMENT_STATUS"))==="PAID"?"good":"warn"}>{txt(get(r,"payment_status","PAYMENT_STATUS"))}</Pill></td><td>{txt(get(r,"fulfilment_status","FULFILMENT_STATUS"))}</td><td>{money(get(r,"order_value","ORDER_VALUE","total"),String(get(r,"inv_currency","INV_CURRENCY","currency")||"GBP"))}</td></tr>)}</tbody></table></div>}
+    <section className="card"><div className="toolbar"><input className="input search" value={q} onChange={x=>setQ(x.target.value)} placeholder="Search order, customer or status..."/><span>{rows.length} orders</span></div>
+    {e?<Err e={e}/>:loading?<Load/>:<div className="tablewrap"><table><thead><tr><th>Order</th><th>Customer</th><th>Status</th><th>Payment</th><th>Fulfilment</th><th>Value</th></tr></thead><tbody>{rows.map((r,i)=><tr className="click" key={txt(get(r,"order_id","ORDER_ID","orderId"),String(i))} onClick={()=>setSel(r)}><td><strong>{txt(get(r,"order_id","ORDER_ID","orderId","order_reference","ORDER_REFERENCE"))}</strong><small>{dt(get(r,"order_date","ORDER_DATE","created_dstamp"))}</small></td><td>{txt(get(r,"customer_email","contact_email","CUSTOMER_EMAIL","email","CONTACT_EMAIL"))}</td><td><Pill>{txt(get(r,"status","STATUS"))}</Pill></td><td><Pill tone={txt(get(r,"payment_status","PAYMENT_STATUS"))==="PAID"?"good":"warn"}>{txt(get(r,"payment_status","PAYMENT_STATUS"))}</Pill></td><td>{txt(get(r,"fulfilment_status","FULFILMENT_STATUS"))}</td><td>{money(get(r,"order_value","ORDER_VALUE","total"),String(get(r,"inv_currency","INV_CURRENCY","currency")||"GBP"))}</td></tr>)}</tbody></table></div>}
     </section>
     {sel&&<OrderModal token={token} order={sel} detail={detail} canCancel={canCancel} onClose={()=>setSel(null)} onChanged={()=>{setSel(null);setNonce(x=>x+1)}}/>}
   </>;
