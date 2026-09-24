@@ -27,7 +27,7 @@ function bearer(req: FastifyRequest): string | null {
 }
 
 function rolesFrom(payload: Record<string, unknown>): string[] {
-  const raw = payload.roles ?? payload.role ?? [];
+  const raw = payload["https://dyneticwms.com/roles"] ?? payload.roles ?? payload.role ?? [];
   if (Array.isArray(raw)) return raw.map(String);
   if (typeof raw === "string") return raw.split(/[ ,]+/).filter(Boolean);
   return [];
