@@ -23,3 +23,4 @@ database/migrations/0024_dynetic_wms_0_3_12.sql
 database/migrations/0025_admin_portal_rbac.sql
 database/migrations/0026_admin_operations.sql
 database/migrations/0027_admin_order_monitoring.sql
+database/migrations/0028_stripe_customer_linkage.sql

@@ -1228,26 +1228,151 @@ function OperationalOrderDetail({
         ))}
       </div>
 
+      {payment==="PAID" && payments.length===0 && (
+        <div className="payment-warning">
+          <strong>Payment evidence missing</strong>
+          <span>
+            This order says PAID but has no DYNETIC payment transaction.
+            Investigate before fulfilment.
+          </span>
+        </div>
+      )}
+
       {payments.length>0 && (
         <>
-          <h3 className="detail-heading">Payments</h3>
-          <div className="payment-list">
-            {payments.map((p,i)=>(
-              <div key={i}>
-                <strong>
-                  {txt(get(p,"provider","PROVIDER"))}
-                </strong>
-                <span>
-                  {txt(get(p,"status","STATUS"))}
-                </span>
-                <span>
-                  {money(
-                    get(p,"amount","AMOUNT"),
-                    "GBP",
-                  )}
-                </span>
-              </div>
-            ))}
+          <h3 className="detail-heading">Payment evidence</h3>
+
+          <div className="payment-list payment-evidence">
+            {payments.map((p,i)=>{
+              const provider=txt(
+                get(p,"provider","PROVIDER")
+              );
+
+              const status=txt(
+                get(p,"status","STATUS")
+              );
+
+              const currency=txt(
+                get(p,"currency","CURRENCY"),
+                "GBP",
+              );
+
+              const reference=txt(
+                get(
+                  p,
+                  "provider_reference",
+                  "PROVIDER_REFERENCE",
+                )
+              );
+
+              const captured=num(
+                get(
+                  p,
+                  "captured_amount",
+                  "CAPTURED_AMOUNT",
+                )
+              );
+
+              const refunded=num(
+                get(
+                  p,
+                  "refunded_amount",
+                  "REFUNDED_AMOUNT",
+                )
+              );
+
+              return (
+                <div
+                  className="payment-evidence-card"
+                  key={i}
+                >
+                  <div className="payment-evidence-head">
+                    <div>
+                      <strong>{provider}</strong>
+                      <Pill
+                        tone={
+                          status==="PAID"
+                            ? "good"
+                            : status==="FAILED"
+                              ? "bad"
+                              : "warn"
+                        }
+                      >
+                        {status}
+                      </Pill>
+                    </div>
+
+                    <strong className="payment-total">
+                      {money(
+                        get(p,"amount","AMOUNT"),
+                        currency,
+                      )}
+                    </strong>
+                  </div>
+
+                  <div className="payment-evidence-grid">
+                    <div>
+                      <span>Captured</span>
+                      <strong>
+                        {money(captured,currency)}
+                      </strong>
+                    </div>
+
+                    <div>
+                      <span>Refunded</span>
+                      <strong>
+                        {money(refunded,currency)}
+                      </strong>
+                    </div>
+
+                    <div>
+                      <span>Provider status</span>
+                      <strong>
+                        {txt(
+                          get(
+                            p,
+                            "provider_status",
+                            "PROVIDER_STATUS",
+                          )
+                        )}
+                      </strong>
+                    </div>
+
+                    <div>
+                      <span>Last event</span>
+                      <strong>
+                        {txt(
+                          get(
+                            p,
+                            "last_event_type",
+                            "LAST_EVENT_TYPE",
+                          )
+                        )}
+                      </strong>
+                    </div>
+                  </div>
+
+                  <div className="payment-reference">
+                    <span>Stripe PaymentIntent</span>
+                    <code>{reference}</code>
+                  </div>
+
+                  <div className="payment-time">
+                    Captured / updated:
+                    {" "}
+                    {dt(
+                      get(
+                        p,
+                        "last_event_dstamp",
+                        "LAST_EVENT_DSTAMP",
+                        "last_update_dstamp",
+                        "LAST_UPDATE_DSTAMP",
+                      )
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </>
       )}
