@@ -1,5 +1,24 @@
 \set ON_ERROR_STOP on
 
+-- DYNETIC_TEST_ENVIRONMENT_GUARD_BEGIN
+DO $dynetic_environment_guard$
+DECLARE
+    v_database text := current_database();
+BEGIN
+    IF v_database NOT IN ('fulfilment_dev', 'fulfilment_test') THEN
+        RAISE EXCEPTION
+            'SAFETY STOP: SQL tests are allowed only against fulfilment_dev or fulfilment_test. Current database: %',
+            v_database;
+    END IF;
+
+    RAISE NOTICE
+        'SAFETY: non-production database verified as %',
+        v_database;
+END
+$dynetic_environment_guard$;
+-- DYNETIC_TEST_ENVIRONMENT_GUARD_END
+
+
 BEGIN;
 
 DO $$

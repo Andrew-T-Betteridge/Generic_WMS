@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory=$true)]
-    [ValidateSet("VERIFY","PROD")]
+    [ValidateSet("VERIFY","TEST","PROD")]
     [string]$Target,
 
     [Parameter(Mandatory=$true)]
@@ -34,6 +34,10 @@ if (-not (Test-Path $manifestPath -PathType Leaf)) {
 
 if ($Target -eq "VERIFY" -and $Database -ne "fulfilment_bootstrap_verify") {
     Stop-Bootstrap "VERIFY may only target fulfilment_bootstrap_verify."
+}
+
+if ($Target -eq "TEST" -and $Database -ne "fulfilment_test") {
+    Stop-Bootstrap "TEST may only target fulfilment_test."
 }
 
 if ($Target -eq "PROD") {
@@ -81,7 +85,11 @@ foreach ($entry in $entries) {
         Stop-Bootstrap "Manifest file does not exist: $entry"
     }
 
-    if ($Target -eq "PROD") {
+    if ($Target -eq "TEST" -and $Database -ne "fulfilment_test") {
+    Stop-Bootstrap "TEST may only target fulfilment_test."
+}
+
+if ($Target -eq "PROD") {
         & git -C $repoRoot ls-files --error-unmatch -- $entry *> $null
         if ($LASTEXITCODE -ne 0) {
             Stop-Bootstrap "Manifest SQL is not committed in the release: $entry"
