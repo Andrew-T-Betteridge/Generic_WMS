@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
+import {ADMIN_CONFIG} from "./env";
 
 type Obj=Record<string,unknown>;
 type Token=()=>Promise<string>;
 
-const BASE=(import.meta.env.VITE_API_BASE_URL||"https://api.finaticsaquatics.co.uk").replace(/\/$/,"");
+const BASE=ADMIN_CONFIG.apiBaseUrl;
 const get=(r:Obj,...k:string[])=>{for(const x of k)if(r[x]!==undefined)return r[x]};
 const txt=(v:unknown,f="-")=>v===null||v===undefined||v===""?f:String(v);
 const num=(v:unknown)=>Number.isFinite(Number(v))?Number(v):0;
@@ -48,7 +49,7 @@ export function InventoryOperations({token,canAdjust}:{token:Token;canAdjust:boo
       <div className="toolbar"><input className="input search" value={q} onChange={x=>setQ(x.target.value)} placeholder="Search SKU, product, tag, batch or location..."/><span>{canAdjust?"Adjustments enabled":"Read only"}</span></div>
       {e?<Err e={e}/>:loading?<Load/>:<div className="tablewrap"><table><thead><tr><th>Product / SKU</th><th>Location</th><th>On hand</th><th>Allocated</th><th>Available</th><th>Condition</th><th>Last movement</th><th/></tr></thead><tbody>
         {rows.map((r,i)=>{const key=txt(get(r,"inventory_key","INVENTORY_KEY"),String(i));const available=num(get(r,"qty_available","QTY_AVAILABLE"));return <tr key={key}>
-          <td><strong>{txt(get(r,"product_name","PRODUCT_NAME","variant_name","VARIANT_NAME"))}</strong><small>{txt(get(r,"sku_id","SKU_ID"))} Â· stock row #{key}</small></td>
+          <td><strong>{txt(get(r,"product_name","PRODUCT_NAME","variant_name","VARIANT_NAME"))}</strong><small>{txt(get(r,"sku_id","SKU_ID"))} Ã‚Â· stock row #{key}</small></td>
           <td>{txt(get(r,"location_id","LOCATION_ID"))}</td>
           <td>{num(get(r,"qty_on_hand","QTY_ON_HAND"))}</td><td>{num(get(r,"qty_allocated","QTY_ALLOCATED"))}</td><td><Pill tone={available>0?"good":"warn"}>{available}</Pill></td>
           <td>{txt(get(r,"condition_id","CONDITION_ID"))}</td><td>{dt(get(r,"move_dstamp","MOVE_DSTAMP"))}</td>

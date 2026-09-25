@@ -4,14 +4,12 @@ import {
   useRef,
   useState,
 } from "react";
+import {ADMIN_CONFIG} from "./env";
 
 type Obj=Record<string,unknown>;
 type Token=()=>Promise<string>;
 
-const BASE=(
-  import.meta.env.VITE_API_BASE_URL ||
-  "https://api.finaticsaquatics.co.uk"
-).replace(/\/$/,"");
+const BASE=ADMIN_CONFIG.apiBaseUrl;
 
 const get=(r:Obj,...keys:string[])=>{
   for(const key of keys){

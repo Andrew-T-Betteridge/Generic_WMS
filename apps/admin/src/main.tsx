@@ -4,10 +4,11 @@ import {Auth0Provider,useAuth0} from "@auth0/auth0-react";
 import "./styles.css";
 import {InventoryOperations} from "./operations";
 import {LiveDashboard,MonitoredOrders,NotificationBell} from "./monitoring";
+import {ADMIN_CONFIG} from "./env";
 
 type Obj=Record<string,unknown>;
 type Me={adminUserId:string;email:string;displayName:string|null;roles:string[];permissions:string[];bootstrap:boolean};
-const BASE=(import.meta.env.VITE_API_BASE_URL||"https://api.finaticsaquatics.co.uk").replace(/\/$/,"");
+const BASE=ADMIN_CONFIG.apiBaseUrl;
 const get=(r:Obj,...k:string[])=>{for(const x of k)if(r[x]!==undefined)return r[x]};
 const txt=(v:unknown,f="-")=>v===null||v===undefined||v===""?f:String(v);
 const num=(v:unknown)=>Number.isFinite(Number(v))?Number(v):0;
@@ -86,7 +87,7 @@ type Page="dashboard"|"products"|"inventory"|"orders"|"access"|"audit";
 function App(){
   const{isLoading,isAuthenticated,loginWithRedirect,logout,getAccessTokenSilently}=useAuth0();
   const[me,setMe]=useState<Me|null>(null),[e,setE]=useState<unknown>(null),[page,setPage]=useState<Page>("dashboard");
-  const token=useCallback(async()=>{const t=await getAccessTokenSilently({authorizationParams:{audience:import.meta.env.VITE_AUTH0_AUDIENCE||"https://api.finaticsaquatics.co.uk"}});if(!t)throw new Error("AUTH_TOKEN_MISSING");return t},[getAccessTokenSilently]);
+  const token=useCallback(async()=>{const t=await getAccessTokenSilently({authorizationParams:{audience:ADMIN_CONFIG.auth0Audience}});if(!t)throw new Error("AUTH_TOKEN_MISSING");return t},[getAccessTokenSilently]);
   useEffect(()=>{if(isAuthenticated)req<Me>(token,"/api/admin/me").then(setMe).catch(setE)},[isAuthenticated,token]);
   const has=useCallback((p:string)=>!!me?.permissions.includes(p),[me]);
   const nav=useMemo(()=>[{p:"dashboard" as Page,l:"Dashboard",perm:"dashboard.read"},{p:"products" as Page,l:"Products",perm:"product.read"},{p:"inventory" as Page,l:"Inventory",perm:"inventory.read"},{p:"orders" as Page,l:"Orders",perm:"order.read"},{p:"access" as Page,l:"Users & roles",perm:"user.read"},{p:"audit" as Page,l:"Audit",perm:"audit.read"}].filter(x=>has(x.perm)),[has]);
@@ -94,9 +95,29 @@ function App(){
   if(!isAuthenticated)return <div className="splash"><div className="login"><div className="logo">FA</div><h1>FINatics Control</h1><p>Internal operations portal powered by DYNETIC WMS.</p><Button onClick={()=>loginWithRedirect()}>Sign in with Auth0</Button></div></div>;
   if(e)return <div className="splash"><div className="login"><h1>Admin access unavailable</h1><ErrorBox e={e}/><Button kind="ghost" onClick={()=>logout({logoutParams:{returnTo:location.origin}})}>Sign out</Button></div></div>;
   if(!me)return <div className="splash"><Load/></div>;
-  return <div className="shell"><aside><div className="brand"><div className="logo small">FA</div><div><strong>{import.meta.env.VITE_ADMIN_TITLE||"FINatics Control"}</strong><span>DYNETIC WMS</span></div></div><nav>{nav.map(n=><button className={page===n.p?"active":""} key={n.p} onClick={()=>setPage(n.p)}>{n.l}</button>)}</nav><div className="foot"><strong>{me.displayName||me.email}</strong><span>{me.roles.join(", ")}</span><button onClick={()=>logout({logoutParams:{returnTo:location.origin}})}>Sign out</button></div></aside><main>{page==="products"?<Products token={token}/>:page==="inventory"?<InventoryOperations token={token} canAdjust={has("inventory.adjust")}/>:page==="orders"?<MonitoredOrders token={token} canCancel={has("order.cancel")}/>:page==="access"?<Access token={token} has={has}/>:page==="audit"?<Audit token={token}/>:<LiveDashboard token={token} me={me}/>}<NotificationBell token={token}/></main></div>;
+  return <div className="shell"><aside><div className="brand"><div className="logo small">FA</div><div><strong>{ADMIN_CONFIG.adminTitle}</strong><span>DYNETIC WMS</span></div></div><nav>{nav.map(n=><button className={page===n.p?"active":""} key={n.p} onClick={()=>setPage(n.p)}>{n.l}</button>)}</nav><div className="foot"><strong>{me.displayName||me.email}</strong><span>{me.roles.join(", ")}</span><button onClick={()=>logout({logoutParams:{returnTo:location.origin}})}>Sign out</button></div></aside><main>{page==="products"?<Products token={token}/>:page==="inventory"?<InventoryOperations token={token} canAdjust={has("inventory.adjust")}/>:page==="orders"?<MonitoredOrders token={token} canCancel={has("order.cancel")}/>:page==="access"?<Access token={token} has={has}/>:page==="audit"?<Audit token={token}/>:<LiveDashboard token={token} me={me}/>}<NotificationBell token={token}/></main></div>;
 }
 
-const domain=import.meta.env.VITE_AUTH0_DOMAIN,clientId=import.meta.env.VITE_AUTH0_CLIENT_ID,audience=import.meta.env.VITE_AUTH0_AUDIENCE||"https://api.finaticsaquatics.co.uk";
-if(!domain||!clientId)document.getElementById("root")!.innerHTML='<div style="font-family:system-ui;padding:40px"><h1>Admin configuration required</h1><p>Set VITE_AUTH0_DOMAIN and VITE_AUTH0_CLIENT_ID.</p></div>';
-else ReactDOM.createRoot(document.getElementById("root")!).render(<React.StrictMode><Auth0Provider domain={domain} clientId={clientId} cacheLocation="localstorage" useRefreshTokens authorizationParams={{redirect_uri:location.origin,audience,scope:"openid profile email"}}><App/></Auth0Provider></React.StrictMode>);
+const {
+  auth0Domain:domain,
+  auth0ClientId:clientId,
+  auth0Audience:audience
+}=ADMIN_CONFIG;
+
+ReactDOM.createRoot(document.getElementById("root")!).render(
+  <React.StrictMode>
+    <Auth0Provider
+      domain={domain}
+      clientId={clientId}
+      cacheLocation="localstorage"
+      useRefreshTokens
+      authorizationParams={{
+        redirect_uri:location.origin,
+        audience,
+        scope:"openid profile email"
+      }}
+    >
+      <App/>
+    </Auth0Provider>
+  </React.StrictMode>
+);

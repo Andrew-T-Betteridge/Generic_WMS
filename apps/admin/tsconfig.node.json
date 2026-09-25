@@ -1,1 +1,12 @@
-{"compilerOptions":{"composite":true,"skipLibCheck":true,"module":"ESNext","moduleResolution":"Bundler"},"include":["vite.config.ts"]}
+﻿{
+  "compilerOptions": {
+    "composite": true,
+    "skipLibCheck": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler"
+  },
+  "include": [
+    "vite.config.ts",
+    "src/admin-config.ts"
+  ]
+}
