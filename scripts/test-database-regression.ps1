@@ -7,11 +7,8 @@ $null = Assert-DyneticTestScriptSafety -ScriptPath $MyInvocation.MyCommand.Path 
 $ErrorActionPreference='Stop'
 $Psql='C:\Program Files\PostgreSQL\18\bin\psql.exe'
 $Root=(Resolve-Path "$PSScriptRoot\..").Path
-$Fixtures=@(
- 'database\tests\025_finatics_checkout_test_fixture.sql'
-)
 
-$Tests=@(
+$TestsBeforeFixture=@(
  'database\tests\001_order_interface_smoke_test.sql',
  'database\tests\002_order_allocation_smoke_test.sql',
  'database\tests\003_allocation_edge_cases.sql',
@@ -33,25 +30,44 @@ $Tests=@(
  'database\tests\019_inventory_reconciliation_regression.sql',
  'database\tests\020_reservation_expiry_regression.sql',
  'database\tests\021_payment_failure_expiry_regression.sql',
- 'database\tests\022_payment_security_idempotency_regression.sql',
+ 'database\tests\022_payment_security_idempotency_regression.sql'
+)
+
+$Fixtures=@(
+ 'database\tests\025_finatics_checkout_test_fixture.sql'
+)
+
+$TestsAfterFixture=@(
  'database\tests\023_checkout_matrix_regression.sql',
  'database\tests\024_order_id_generation_regression.sql',
  'database\tests\026_checkout_customer_validation_regression.sql',
  'database\tests\027_checkout_address_length_regression.sql',
  'database\tests\028_admin_rbac_regression.sql'
 )
+
+$passed=0
+
+foreach($Test in $TestsBeforeFixture){
+ Write-Host "[DB TEST] $Test"
+ & $Psql -U $DbUser -d $Database -v ON_ERROR_STOP=1 -P pager=off -f (Join-Path $Root $Test)
+ if($LASTEXITCODE -ne 0){throw "Regression failed: $Test"}
+ $passed++
+}
+
 foreach($Fixture in $Fixtures){
  Write-Host "[DB FIXTURE] $Fixture"
  & $Psql -U $DbUser -d $Database -v ON_ERROR_STOP=1 -P pager=off -f (Join-Path $Root $Fixture)
  if($LASTEXITCODE -ne 0){throw "Fixture failed: $Fixture"}
 }
 
-$passed=0
-foreach($Test in $Tests){
+foreach($Test in $TestsAfterFixture){
  Write-Host "[DB TEST] $Test"
  & $Psql -U $DbUser -d $Database -v ON_ERROR_STOP=1 -P pager=off -f (Join-Path $Root $Test)
  if($LASTEXITCODE -ne 0){throw "Regression failed: $Test"}
  $passed++
 }
+
+$totalTests=$TestsBeforeFixture.Count+$TestsAfterFixture.Count
+
 Write-Host ""
-Write-Host "DYNETIC WMS DATABASE REGRESSION PASSED: $passed/$($Tests.Count) test files."
+Write-Host "DYNETIC WMS DATABASE REGRESSION PASSED: $passed/$totalTests test files."
