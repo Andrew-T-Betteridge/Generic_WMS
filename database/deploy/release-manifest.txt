@@ -1,22 +1,21 @@
-# DYNETIC WMS 0.3.12 release manifest
-# Upgrade from the validated v0.3.11 production baseline.
+# DYNETIC WMS 0.3.13 release manifest
+# Upgrade from the validated v0.3.12 production baseline.
 #
-# This migration contains:
-# - explicit SKU physical units for carrier rating;
-# - generic read-only carrier quotation;
-# - carrier parcel length-plus-girth constraint support;
-# - configurable DISTANCE / CARRIER / combined delivery pricing;
-# - FINatics GBP 1-per-mile personal delivery through 50 miles;
-# - FINatics Meet Halfway fulfilment from 50.01 through 100 miles;
-# - FINatics Evri Standard weight-band configuration;
-# - mixed-basket together/split delivery pricing;
-# - carrier/service persistence on submitted web orders;
-# - source-controlled FINatics delivery origin and livestock carrier block;
-# - DYNETIC WMS 0.3.12 system-version registration.
-#
-# Canonical function definitions are embedded in migration 0024 and therefore
-# must not also be executed separately during release deployment.
+# Release contents:
+# - admin portal RBAC and permissions;
+# - audited admin inventory and order operations;
+# - live order monitoring and notification outbox;
+# - Stripe customer/account linkage;
+# - hardened order-to-account claim by verified email;
+# - FINatics Fry Tray carrier weight and shipping dimensions;
+# - DYNETIC WMS 0.3.13 system-version registration.
 #
 # Tests, fixtures, smoke/load scripts are deliberately absent.
 
-database/migrations/0024_dynetic_wms_0_3_12.sql
+database/migrations/0025_admin_portal_rbac.sql
+database/migrations/0026_admin_operations.sql
+database/migrations/0027_admin_order_monitoring.sql
+database/migrations/0028_stripe_customer_linkage.sql
+database/migrations/0029_fix_claim_order_account_email.sql
+database/migrations/0030_fry_tray_shipping_data.sql
+database/migrations/0031_dynetic_wms_0_3_13.sql

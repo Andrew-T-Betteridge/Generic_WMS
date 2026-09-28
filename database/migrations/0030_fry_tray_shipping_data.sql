@@ -1,0 +1,39 @@
+BEGIN;
+
+UPDATE core.SKU
+SET EACH_WEIGHT=0.96,
+    EACH_HEIGHT=15.2,
+    EACH_WIDTH=22.9,
+    EACH_DEPTH=30.5
+WHERE CLIENT_ID='FINATICS'
+  AND SKU_ID LIKE 'FRYTRAY001-S-%';
+
+UPDATE core.SKU
+SET EACH_WEIGHT=0.98,
+    EACH_HEIGHT=15.2,
+    EACH_WIDTH=22.9,
+    EACH_DEPTH=30.5
+WHERE CLIENT_ID='FINATICS'
+  AND SKU_ID LIKE 'FRYTRAY001-M-%';
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM core.SKU
+        WHERE CLIENT_ID='FINATICS'
+          AND SKU_ID LIKE 'FRYTRAY001-%'
+          AND (
+              EACH_WEIGHT IS NULL OR EACH_WEIGHT <= 0
+              OR EACH_HEIGHT IS NULL OR EACH_HEIGHT <= 0
+              OR EACH_WIDTH IS NULL OR EACH_WIDTH <= 0
+              OR EACH_DEPTH IS NULL OR EACH_DEPTH <= 0
+          )
+    ) THEN
+        RAISE EXCEPTION
+            'FINatics Fry Tray shipping dimensions/weight remain incomplete after migration.';
+    END IF;
+END
+$$;
+
+COMMIT;

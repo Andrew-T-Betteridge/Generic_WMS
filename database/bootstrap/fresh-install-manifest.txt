@@ -1,4 +1,4 @@
-# DYNETIC WMS 0.3.12 fresh-install manifest
+# DYNETIC WMS 0.3.13 fresh-install manifest
 #
 # This is ONLY for an EMPTY database.
 # It is not an upgrade manifest.
@@ -7,7 +7,7 @@
 #
 # Product/catalogue base data is production data.
 # Production fulfilment and delivery-zone configuration is applied by
-# the source-controlled 0.3.12 migration included in this manifest.
+# the source-controlled release migrations included in this manifest.
 
 database/bootstrap/001_dynetic_schema_v0_3_4.sql
 database/migrations/0004_gb_postcode_directory.sql
@@ -25,3 +25,5 @@ database/migrations/0026_admin_operations.sql
 database/migrations/0027_admin_order_monitoring.sql
 database/migrations/0028_stripe_customer_linkage.sql
 database/migrations/0029_fix_claim_order_account_email.sql
+database/migrations/0030_fry_tray_shipping_data.sql
+database/migrations/0031_dynetic_wms_0_3_13.sql
