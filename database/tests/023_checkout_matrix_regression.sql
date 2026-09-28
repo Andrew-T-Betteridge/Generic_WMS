@@ -155,11 +155,17 @@ BEGIN
             )
         ) INTO v;
         IF NOT COALESCE((v->>'valid')::BOOLEAN,FALSE)
-           OR COALESCE((v->>'paymentReady')::BOOLEAN,FALSE)
-           OR v->'total' IS DISTINCT FROM 'null'::jsonb THEN
-            RAISE EXCEPTION '06 STANDARD carrier should be pending price: %',v;
+           OR NOT COALESCE((v->>'paymentReady')::BOOLEAN,FALSE)
+           OR COALESCE((v->>'freightCost')::NUMERIC,-1)<>3.29
+           OR COALESCE(v#>>'{selectedFulfilmentOption,code}','')<>'STANDARD_EVRI_GB'
+           OR COALESCE(v#>>'{selectedFulfilmentOption,carrierId}','')<>'EVRI'
+           OR COALESCE(v#>>'{selectedFulfilmentOption,pricingMethod}','')<>'CARRIER'
+           OR NOT COALESCE((v#>>'{selectedFulfilmentOption,carrierQuote,quoted}')::BOOLEAN,FALSE)
+           OR COALESCE((v#>>'{selectedFulfilmentOption,requiresManualConfirmation}')::BOOLEAN,TRUE)
+           OR (v->>'total')::NUMERIC<>((v->>'totalBeforeDelivery')::NUMERIC+3.29) THEN
+            RAISE EXCEPTION '06 STANDARD Evri carrier quote incorrect: %',v;
         END IF;
-        RAISE NOTICE 'PASS 06: unpriced STANDARD carrier blocked';
+        RAISE NOTICE 'PASS 06: STANDARD Evri carrier quoted at 3.29';
 
         SELECT api.QUOTE_CHECKOUT(
             'FINATICS',jsonb_build_object(
@@ -179,7 +185,7 @@ BEGIN
             'FINATICS',jsonb_build_object(
                 'idempotencyKey','MATRIX-STANDARD-ORDER',
                 'items',jsonb_build_array(jsonb_build_object('sku_id',v_standard_sku,'qty',1)),
-                'customer',jsonb_build_object('name','Matrix Standard','email','matrix-standard@example.invalid'),
+                'customer',jsonb_build_object('name','Matrix Standard','email','matrix-standard@example.invalid','phone','07123456789'),
                 'deliveryAddress',jsonb_build_object('name','Matrix Standard','address1','1 Test Street','town','Hinckley','postcode','CV13 0AA','country','GB'),
                 'fulfilmentOptionCode','COLLECTION','fulfilmentPreference','CONSOLIDATE'
             ),NULL,30
@@ -193,7 +199,7 @@ BEGIN
             'FINATICS',jsonb_build_object(
                 'idempotencyKey','MATRIX-STANDARD-ORDER',
                 'items',jsonb_build_array(jsonb_build_object('sku_id',v_standard_sku,'qty',1)),
-                'customer',jsonb_build_object('name','Matrix Standard','email','matrix-standard@example.invalid'),
+                'customer',jsonb_build_object('name','Matrix Standard','email','matrix-standard@example.invalid','phone','07123456789'),
                 'deliveryAddress',jsonb_build_object('name','Matrix Standard','address1','1 Test Street','town','Hinckley','postcode','CV13 0AA','country','GB'),
                 'fulfilmentOptionCode','COLLECTION','fulfilmentPreference','CONSOLIDATE'
             ),NULL,30
@@ -329,7 +335,7 @@ BEGIN
             'FINATICS',jsonb_build_object(
                 'idempotencyKey','MATRIX-LIVESTOCK-ORDER',
                 'items',jsonb_build_array(jsonb_build_object('sku_id',v_livestock_sku,'qty',1)),
-                'customer',jsonb_build_object('name','Matrix Livestock','email','matrix-livestock@example.invalid'),
+                'customer',jsonb_build_object('name','Matrix Livestock','email','matrix-livestock@example.invalid','phone','07123456789'),
                 'deliveryAddress',jsonb_build_object('name','Matrix Livestock','address1','1 Test Street','town','Hinckley','postcode','CV13 0AA','country','GB'),
                 'fulfilmentOptionCode','COLLECTION','fulfilmentPreference','CONSOLIDATE'
             ),NULL,30
@@ -382,7 +388,7 @@ BEGIN
                     jsonb_build_object('sku_id',v_standard_sku,'qty',1),
                     jsonb_build_object('sku_id',v_livestock_sku,'qty',1)
                 ),
-                'customer',jsonb_build_object('name','Matrix Mixed','email','matrix-mixed@example.invalid'),
+                'customer',jsonb_build_object('name','Matrix Mixed','email','matrix-mixed@example.invalid','phone','07123456789'),
                 'deliveryAddress',jsonb_build_object('name','Matrix Mixed','address1','1 Test Street','town','Hinckley','postcode','CV13 0AA','country','GB'),
                 'fulfilmentOptionCode','COLLECTION','fulfilmentPreference','SPLIT_WHEN_REQUIRED'
             ),NULL,30
@@ -394,9 +400,9 @@ BEGIN
         IF NOT EXISTS (
             SELECT 1 FROM core.ORDER_HEADER
             WHERE CLIENT_ID='FINATICS' AND ORDER_ID=v_order_id
-              AND FULFILMENT_PREFERENCE='SPLIT_WHEN_REQUIRED'
+              AND FULFILMENT_PREFERENCE='CONSOLIDATE'
         ) THEN
-            RAISE EXCEPTION '18 SPLIT_WHEN_REQUIRED not persisted for %',v_order_id;
+            RAISE EXCEPTION '18 authoritative COLLECTION preference not persisted for %',v_order_id;
         END IF;
         IF (
             SELECT COUNT(*) FROM core.ORDER_LINE
@@ -406,7 +412,7 @@ BEGIN
             RAISE EXCEPTION '18 expected two mixed order lines for %',v_order_id;
         END IF;
         PERFORM core.DEALLOCATE_ORDER('FINATICS',v_order_id);
-        RAISE NOTICE 'PASS 18: MIXED order + SPLIT_WHEN_REQUIRED';
+        RAISE NOTICE 'PASS 18: COLLECTION overrides stale SPLIT_WHEN_REQUIRED client preference';
     END IF;
 
     RAISE NOTICE '============================================================';
