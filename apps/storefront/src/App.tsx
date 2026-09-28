@@ -83,7 +83,11 @@ const {
     try {
       setAccountMessage("Checking DYNETIC WMS account...");
 
-      const token = await getAccessTokenSilently();
+      const token = await getAccessTokenSilently({
+        authorizationParams: {
+          audience: import.meta.env.VITE_AUTH0_AUDIENCE,
+        },
+      });
 
       const response = await fetch(
         `${import.meta.env.VITE_API_BASE_URL}/api/account`,
@@ -130,7 +134,7 @@ if (error) {
 if (!product) {
     return (
       <main className="shell">
-        <p>Loading FINatics Aquatics…</p>
+        <p>Loading FINatics Aquaticsâ€¦</p>
       </main>
     );
   }
@@ -196,7 +200,7 @@ if (!product) {
           )}
 
           <button className="basketButton">
-            Basket · 0
+            Basket Â· 0
           </button>
         </div>
       </header>
@@ -237,7 +241,7 @@ if (!product) {
             </strong>
 
             <small>
-              External grow-out · continuous water exchange
+              External grow-out Â· continuous water exchange
             </small>
           </div>
         </section>

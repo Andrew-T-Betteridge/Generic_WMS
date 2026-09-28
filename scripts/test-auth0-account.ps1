@@ -1,5 +1,5 @@
 param(
-    [string]$BaseUrl = "http://localhost:3001",
+    [string]$BaseUrl = "http://localhost:3101",
     [string]$AccessToken = ""
 )
 # DYNETIC_TEST_WRAPPER_GUARD_BEGIN

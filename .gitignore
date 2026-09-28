@@ -18,3 +18,5 @@ config/environments/production.api.env
 config/environments/test.auth0.env
 
 apps/storefront/.env.local
+
+*.tsbuildinfo
