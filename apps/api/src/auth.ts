@@ -1,6 +1,7 @@
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import type { FastifyRequest } from "fastify";
 import { db } from "./db.js";
+import { env } from "./env.js";
 
 export type AuthIdentity = {
   accountId: string;
@@ -11,12 +12,12 @@ export type AuthIdentity = {
   roles: string[];
 };
 
-const mode = (process.env.AUTH_MODE ?? "OIDC").toUpperCase();
-const issuer = process.env.AUTH_ISSUER;
-const audience = process.env.AUTH_AUDIENCE;
-const jwksUrl = process.env.AUTH_JWKS_URL;
-const devSecret = process.env.AUTH_DEV_HS256_SECRET;
-const providerName = process.env.AUTH_PROVIDER_NAME ?? "OIDC";
+const mode = env.authMode;
+const issuer = env.authIssuer;
+const audience = env.authAudience;
+const jwksUrl = env.authJwksUrl;
+const devSecret = env.authDevHs256Secret;
+const providerName = env.authProviderName;
 
 let jwks: ReturnType<typeof createRemoteJWKSet> | undefined;
 

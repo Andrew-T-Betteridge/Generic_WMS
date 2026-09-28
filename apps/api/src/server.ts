@@ -2,7 +2,7 @@ import Fastify from "fastify";
 import cors from "@fastify/cors";
 import crypto from "node:crypto";
 import { SignJWT, jwtVerify } from "jose";
-import "dotenv/config";
+import { env } from "./env.js";
 import { db } from "./db.js";
 import { optionalIdentity, requireIdentity } from "./auth.js";
 import { auditAdminChange, registerAdminAccessRoutes, requirePermission } from "./admin-rbac.js";
@@ -14,10 +14,10 @@ import { createStripePaymentIntent, createStripeRefund, normaliseStripeEvent, ve
 import { AddressLookupError, resolveUkAddress, searchUkAddresses } from "./address.js";
 
 const app = Fastify({ logger: true });
-const clientId = process.env.DEFAULT_CLIENT_ID ?? "FINATICS";
+const clientId = env.defaultClientId;
 const allowedOrigins = [
-  ...(process.env.STORE_FRONT_ORIGIN ?? "http://localhost:5173").split(","),
-  ...(process.env.ADMIN_ORIGIN ?? "").split(","),
+  ...env.storeFrontOrigin.split(","),
+  ...env.adminOrigin.split(","),
 ]
   .map((x) => x.trim())
   .filter(Boolean);
@@ -56,7 +56,7 @@ async function auditSecurity(req:any,result:string,detail?:string,resourceType?:
 }
 
 function orderTokenSecret() {
-  const s=process.env.ORDER_ACCESS_TOKEN_SECRET;
+  const s=env.orderAccessTokenSecret;
   if(!s) throw new Error("ORDER_ACCESS_TOKEN_SECRET_REQUIRED");
   return new TextEncoder().encode(s);
 }
@@ -65,7 +65,7 @@ async function signGuestAccess(scope:string,resourceId:string,email:string) {
   return new SignJWT({resourceId,email:email.toLowerCase(),scope})
     .setProtectedHeader({alg:"HS256"})
     .setIssuedAt()
-    .setExpirationTime(process.env.ORDER_ACCESS_TOKEN_TTL ?? "30d")
+    .setExpirationTime(env.orderAccessTokenTtl)
     .sign(orderTokenSecret());
 }
 
@@ -421,5 +421,5 @@ app.post("/api/admin/payments/:paymentId/refund",async(req,reply)=>{
   }
 });
 
-const port=Number(process.env.PORT??3001);
+const port=env.port;
 app.listen({port,host:"0.0.0.0"}).catch((e)=>{app.log.error(e);process.exit(1);});
