@@ -6,6 +6,7 @@ param(
   [int]$Port=5432,
   [string]$DbUser="postgres",
   [string]$PsqlPath="C:\Program Files\PostgreSQL\18\bin\psql.exe",
+  [string]$ReleaseTag,
   [switch]$ConfirmProductionRelease
 )
 
@@ -117,16 +118,42 @@ if($Target -eq "PROD"){
     }
   }
 
+  if([string]::IsNullOrWhiteSpace($ReleaseTag)){
+    Stop-Deploy "PROD requires an explicit -ReleaseTag."
+  }
+
+  if($ReleaseTag -notmatch '^dynetic-wms-v\d+\.\d+\.\d+$'){
+    Stop-Deploy "Invalid release tag format: $ReleaseTag"
+  }
+
   $head=(& git -C $repoRoot rev-parse HEAD).Trim()
   if(-not $head){Stop-Deploy "Could not determine Git HEAD."}
 
-  $tags=@(& git -C $repoRoot tag --points-at HEAD "dynetic-wms-v*" | Where-Object {$_})
-  if($tags.Count -eq 0){Stop-Deploy "PROD requires HEAD to have a dynetic-wms-v* release tag."}
+  $tagOut=@(& git -C $repoRoot rev-parse --verify "$ReleaseTag^{commit}" 2>$null)
+  if($LASTEXITCODE -ne 0 -or $tagOut.Count -ne 1){
+    Stop-Deploy "Release tag does not exist or cannot resolve to a commit: $ReleaseTag"
+  }
+
+  $tagCommit=$tagOut[0].Trim()
+  if($tagCommit -ne $head){
+    Stop-Deploy "Release tag $ReleaseTag resolves to $tagCommit, not current HEAD $head."
+  }
+
+  $expectedVersion=$ReleaseTag.Substring("dynetic-wms-v".Length)
+  $apiPackagePath=Join-Path $repoRoot "apps\api\package.json"
+  if(-not (Test-Path $apiPackagePath -PathType Leaf)){
+    Stop-Deploy "API package.json is missing."
+  }
+
+  $apiPackage=Get-Content $apiPackagePath -Raw | ConvertFrom-Json
+  if($apiPackage.version -ne $expectedVersion){
+    Stop-Deploy "Release tag version $expectedVersion does not match API package version $($apiPackage.version)."
+  }
 
   Write-Host ""
   Write-Host "PRODUCTION RELEASE GUARD PASSED" -ForegroundColor Yellow
   Write-Host "Git HEAD : $head"
-  Write-Host "Tag(s)   : $($tags -join ', ')"
+  Write-Host "Release Tag : $ReleaseTag"
   Write-Host "Manifest : all SQL files committed in this release"
 }
 

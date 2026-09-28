@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory=$true)]
-    [ValidateSet("VERIFY","TEST","PROD")]
+    [ValidateSet("VERIFY","TEST")]
     [string]$Target,
 
     [Parameter(Mandatory=$true)]
@@ -9,8 +9,7 @@ param(
     [string]$HostName = "localhost",
     [int]$Port = 5432,
     [string]$DbUser = "postgres",
-    [string]$PsqlPath = "C:\Program Files\PostgreSQL\18\bin\psql.exe",
-    [switch]$ConfirmProductionRelease
+    [string]$PsqlPath = "C:\Program Files\PostgreSQL\18\bin\psql.exe"
 )
 
 $ErrorActionPreference = "Stop"
@@ -38,26 +37,6 @@ if ($Target -eq "VERIFY" -and $Database -ne "fulfilment_bootstrap_verify") {
 
 if ($Target -eq "TEST" -and $Database -ne "fulfilment_test") {
     Stop-Bootstrap "TEST may only target fulfilment_test."
-}
-
-if ($Target -eq "PROD") {
-    if ($Database -ne "fulfilment_prod") {
-        Stop-Bootstrap "PROD may only target fulfilment_prod."
-    }
-    if (-not $ConfirmProductionRelease) {
-        Stop-Bootstrap "PROD requires -ConfirmProductionRelease."
-    }
-
-    $trackedStatus = @(& git -C $repoRoot status --porcelain --untracked-files=no)
-    if ($LASTEXITCODE -ne 0) { Stop-Bootstrap "Could not read Git status." }
-    if ($trackedStatus.Count -gt 0) {
-        Stop-Bootstrap "Tracked working-tree changes exist."
-    }
-
-    $tag = (& git -C $repoRoot tag --points-at HEAD "dynetic-wms-v0.3.12").Trim()
-    if ($tag -ne "dynetic-wms-v0.3.12") {
-        Stop-Bootstrap "PROD requires HEAD tagged exactly dynetic-wms-v0.3.12."
-    }
 }
 
 $entries = @(
@@ -88,14 +67,6 @@ foreach ($entry in $entries) {
     if ($Target -eq "TEST" -and $Database -ne "fulfilment_test") {
     Stop-Bootstrap "TEST may only target fulfilment_test."
 }
-
-if ($Target -eq "PROD") {
-        & git -C $repoRoot ls-files --error-unmatch -- $entry *> $null
-        if ($LASTEXITCODE -ne 0) {
-            Stop-Bootstrap "Manifest SQL is not committed in the release: $entry"
-        }
-    }
-
     $files += (Resolve-Path $full).Path
 }
 

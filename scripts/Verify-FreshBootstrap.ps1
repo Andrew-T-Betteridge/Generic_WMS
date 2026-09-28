@@ -34,8 +34,8 @@ BEGIN
     WHERE table_schema IN ('audit','config','core','interface')
       AND table_type='BASE TABLE';
 
-    IF v_tables <> 68 THEN
-        RAISE EXCEPTION 'Expected 68 application tables, got %', v_tables;
+    IF v_tables <> 77 THEN
+        RAISE EXCEPTION 'Expected 77 application tables, got %', v_tables;
     END IF;
 
     SELECT count(*) INTO v_views
@@ -51,8 +51,8 @@ BEGIN
     JOIN pg_namespace n ON n.oid=p.pronamespace
     WHERE n.nspname IN ('api','audit','config','core','interface');
 
-    IF v_functions <> 68 THEN
-        RAISE EXCEPTION 'Expected 68 application functions, got %', v_functions;
+    IF v_functions <> 71 THEN
+        RAISE EXCEPTION 'Expected 71 application functions, got %', v_functions;
     END IF;
 
     SELECT
