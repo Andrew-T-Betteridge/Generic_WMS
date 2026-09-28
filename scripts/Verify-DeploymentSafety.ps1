@@ -26,6 +26,8 @@ if(Test-Path $deploy -PathType Leaf){
     'current_database()',
     'ON_ERROR_STOP=1',
     'ReleaseTag',
+    'ExpectedCurrentVersion',
+    'GET_SYSTEM_VERSION',
     'rev-parse --verify',
     '^dynetic-wms-v\d+\.\d+\.\d+$',
     'git -C $repoRoot status --porcelain --untracked-files=no',
@@ -49,6 +51,10 @@ if(Test-Path $prodWrapper -PathType Leaf){
 
   if($p.Contains('build-database.ps1')){
     $fail+="Legacy PROD build-database deployment path still exists"
+  }
+
+  if(-not $p.Contains('ExpectedCurrentVersion')){
+    $fail+="PROD wrapper does not require an explicit expected baseline version"
   }
 
   if(-not $p.Contains('ReleaseTag')){
@@ -115,7 +121,7 @@ if(Test-Path $manifest -PathType Leaf){
 }
 
 Write-Host ""
-Write-Host "DYNETIC DEPLOYMENT-SAFETY VERIFICATION V5" -ForegroundColor Cyan
+Write-Host "DYNETIC DEPLOYMENT-SAFETY VERIFICATION V6" -ForegroundColor Cyan
 
 if($fail.Count){
   Write-Host "FAIL - DEPLOYMENT SAFETY IS NOT COMPLETE" -ForegroundColor Red
@@ -134,6 +140,8 @@ Write-Host "SQL errors ............... stop remaining deployment"
 Write-Host "PROD tracked state ....... tracked tree must be clean"
 Write-Host "PROD release files ....... guard + every manifest SQL must be committed"
 Write-Host "PROD release tag ......... explicit dynetic-wms-vX.Y.Z must resolve exactly to HEAD"
+Write-Host "PROD baseline version ..... explicit version verified before release SQL"
+Write-Host "PROD resulting version .... exact release version verified after SQL"
 Write-Host "Fresh bootstrap .......... VERIFY / TEST only; PROD impossible"
 Write-Host "Release tag creation ..... explicit semantic version matched to committed source"
 

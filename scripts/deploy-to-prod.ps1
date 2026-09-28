@@ -3,6 +3,10 @@ param(
     [ValidatePattern('^dynetic-wms-v\d+\.\d+\.\d+$')]
     [string]$ReleaseTag,
 
+    [Parameter(Mandatory=$true)]
+    [ValidatePattern('^\d+\.\d+\.\d+$')]
+    [string]$ExpectedCurrentVersion,
+
     [string]$HostName='localhost',
     [int]$Port=5432,
     [string]$DbUser='postgres',
@@ -32,6 +36,7 @@ Write-Host 'Delegating PROD database deployment to the canonical exact-tag relea
     -DbUser $DbUser `
     -PsqlPath $PsqlPath `
     -ReleaseTag $ReleaseTag `
+    -ExpectedCurrentVersion $ExpectedCurrentVersion `
     -ConfirmProductionRelease
 
 if($LASTEXITCODE -ne 0){

@@ -7,6 +7,7 @@ param(
   [string]$DbUser="postgres",
   [string]$PsqlPath="C:\Program Files\PostgreSQL\18\bin\psql.exe",
   [string]$ReleaseTag,
+  [string]$ExpectedCurrentVersion,
   [switch]$ConfirmProductionRelease
 )
 
@@ -150,6 +151,30 @@ if($Target -eq "PROD"){
     Stop-Deploy "Release tag version $expectedVersion does not match API package version $($apiPackage.version)."
   }
 
+  if([string]::IsNullOrWhiteSpace($ExpectedCurrentVersion)){
+    Stop-Deploy "PROD requires an explicit -ExpectedCurrentVersion."
+  }
+
+  if($ExpectedCurrentVersion -notmatch '^\d+\.\d+\.\d+$'){
+    Stop-Deploy "Invalid expected current version: $ExpectedCurrentVersion"
+  }
+
+  $currentVersionOut=@(
+    & $PsqlPath -X -v ON_ERROR_STOP=1 -h $HostName -p $Port -U $DbUser -d $database -Atc "SELECT api.GET_SYSTEM_VERSION()->>'version';" 2>&1
+  )
+
+  if($LASTEXITCODE -ne 0){
+    Stop-Deploy "Could not determine current PROD system version: $($currentVersionOut -join ' ')"
+  }
+
+  $currentVersion=(($currentVersionOut | Select-Object -Last 1).ToString()).Trim()
+
+  if($currentVersion -ne $ExpectedCurrentVersion){
+    Stop-Deploy "PROD baseline mismatch. Expected $ExpectedCurrentVersion but database reports $currentVersion."
+  }
+
+  Write-Host "Production baseline version verified: $currentVersion"
+
   Write-Host ""
   Write-Host "PRODUCTION RELEASE GUARD PASSED" -ForegroundColor Yellow
   Write-Host "Git HEAD : $head"
@@ -173,6 +198,23 @@ foreach($sql in $files){
   if($LASTEXITCODE -ne 0){Stop-Deploy "psql failed while applying '$rel'. Remaining files were not run."}
 }
 
+if($Target -eq "PROD"){
+  $deployedVersionOut=@(
+    & $PsqlPath -X -v ON_ERROR_STOP=1 -h $HostName -p $Port -U $DbUser -d $database -Atc "SELECT api.GET_SYSTEM_VERSION()->>'version';" 2>&1
+  )
+
+  if($LASTEXITCODE -ne 0){
+    Stop-Deploy "Could not verify deployed PROD system version: $($deployedVersionOut -join ' ')"
+  }
+
+  $deployedVersion=(($deployedVersionOut | Select-Object -Last 1).ToString()).Trim()
+
+  if($deployedVersion -ne $expectedVersion){
+    Stop-Deploy "Post-deployment version mismatch. Expected $expectedVersion but database reports $deployedVersion."
+  }
+
+  Write-Host "Post-deployment version verified: $deployedVersion"
+}
 Write-Host ""
 Write-Host "DEPLOYMENT COMPLETE" -ForegroundColor Green
 Write-Host "Target: $Target / $database"
