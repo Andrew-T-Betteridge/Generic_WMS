@@ -27,3 +27,6 @@ database/migrations/0028_stripe_customer_linkage.sql
 database/migrations/0029_fix_claim_order_account_email.sql
 database/migrations/0030_fry_tray_shipping_data.sql
 database/migrations/0031_dynetic_wms_0_3_13.sql
+database/migrations/0032_admin_operations_control_plane.sql
+database/migrations/0033_admin_operations_rbac_sync.sql
+database/migrations/0034_dynetic_wms_0_3_14.sql

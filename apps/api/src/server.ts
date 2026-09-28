@@ -7,7 +7,7 @@ import { db } from "./db.js";
 import { optionalIdentity, requireIdentity } from "./auth.js";
 import { auditAdminChange, registerAdminAccessRoutes, requirePermission } from "./admin-rbac.js";
 import { registerAdminManagementRoutes } from "./admin-management.js";
-import { registerAdminOperationRoutes } from "./admin-operations.js";
+import { registerAdminOperationsRoutes } from "./admin-operations.js";
 import { registerAdminMonitoringRoutes } from "./admin-monitoring.js";
 import { startNotificationDispatcher } from "./notification-dispatcher.js";
 import { createStripePaymentIntent, createStripeRefund, normaliseStripeEvent, verifyStripeSignature } from "./stripe.js";
@@ -366,7 +366,7 @@ app.post("/api/webhooks/stripe",async(req,reply)=>{
 
 registerAdminAccessRoutes(app, clientId);
 registerAdminManagementRoutes(app, clientId);
-registerAdminOperationRoutes(app, clientId);
+registerAdminOperationsRoutes(app, clientId);
 registerAdminMonitoringRoutes(app, clientId);
 startNotificationDispatcher();
 
@@ -399,26 +399,6 @@ app.post("/api/admin/reservations/expire",async(req,reply)=>{
     await auditAdminChange(clientId,principal,"RESERVATION_EXPIRY","MANUAL","RUN",null,result);
     return result;
   } catch(e){return reply.code(errorCode(e)==="AUTHENTICATION_REQUIRED"?401:403).send({error:errorCode(e)});}
-});
-app.post("/api/admin/payments/:paymentId/refund",async(req,reply)=>{
-  try{
-    const principal=await requirePermission(req,clientId,"payment.refund");
-    const {paymentId}=req.params as {paymentId:string};
-    const b=req.body as {amount?:number};
-    const r=await db.query("select PROVIDER,PROVIDER_REFERENCE,AMOUNT,REFUNDED_AMOUNT from core.PAYMENT_TRANSACTION where CLIENT_ID=$1 and PAYMENT_ID=$2::uuid",[clientId,paymentId]);
-    if(!r.rowCount)return reply.code(404).send({error:"PAYMENT_NOT_FOUND"});
-    const p=r.rows[0];
-    if(p.provider!=="STRIPE" || !p.provider_reference)return reply.code(400).send({error:"STRIPE_PAYMENT_REQUIRED"});
-    const max=Number(p.amount)-Number(p.refunded_amount);
-    const amount=b.amount==null?undefined:Number(b.amount);
-    if(amount!=null && (amount<=0 || amount>max))return reply.code(400).send({error:"INVALID_REFUND_AMOUNT"});
-    const result=await createStripeRefund(p.provider_reference,amount);
-    await auditAdminChange(clientId,principal,"PAYMENT_TRANSACTION",paymentId,"REFUND_REQUESTED",p,{requestedAmount:amount??max,result});
-    return reply.code(202).send(result);
-  }catch(e){
-    req.log.error(e);
-    return reply.code(errorCode(e)==="AUTHENTICATION_REQUIRED"?401:403).send({error:errorCode(e)});
-  }
 });
 
 const port=env.port;

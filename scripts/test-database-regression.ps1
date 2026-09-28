@@ -54,7 +54,8 @@ $TestsAfterFixture=@(
  'database\tests\024_order_id_generation_regression.sql',
  'database\tests\026_checkout_customer_validation_regression.sql',
  'database\tests\027_checkout_address_length_regression.sql',
- 'database\tests\028_admin_rbac_regression.sql'
+ 'database\tests\028_admin_rbac_regression.sql',
+ 'database\tests\029_admin_operations_control_plane_regression.sql'
 )
 
 $passed=0

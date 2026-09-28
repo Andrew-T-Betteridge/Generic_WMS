@@ -472,7 +472,7 @@ export function registerAdminManagementRoutes(
     }
   });
 
-  app.get("/api/admin/inventory", async (req, reply) => {
+  app.get("/api/admin/legacy-v0313/inventory", async (req, reply) => {
     try {
       await requirePermission(req, clientId, "inventory.read");
       const query = req.query as {
@@ -525,7 +525,7 @@ export function registerAdminManagementRoutes(
     }
   });
 
-  app.get("/api/admin/orders", async (req, reply) => {
+  app.get("/api/admin/legacy-v0313/orders", async (req, reply) => {
     try {
       await requirePermission(req, clientId, "order.read");
       const query = req.query as {
@@ -592,7 +592,7 @@ export function registerAdminManagementRoutes(
     }
   });
 
-  app.get("/api/admin/orders/:orderId", async (req, reply) => {
+  app.get("/api/admin/legacy-v0313/orders/:orderId", async (req, reply) => {
     try {
       await requirePermission(req, clientId, "order.read");
       const { orderId } = req.params as { orderId: string };

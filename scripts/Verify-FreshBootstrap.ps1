@@ -25,8 +25,8 @@ DECLARE
     v_media integer;
 BEGIN
     SELECT api.GET_SYSTEM_VERSION()->>'version' INTO v_version;
-    IF v_version <> '0.3.13' THEN
-        RAISE EXCEPTION 'Expected version 0.3.13, got %', v_version;
+    IF v_version <> '0.3.14' THEN
+        RAISE EXCEPTION 'Expected version 0.3.14, got %', v_version;
     END IF;
 
     SELECT count(*) INTO v_tables
@@ -34,16 +34,16 @@ BEGIN
     WHERE table_schema IN ('audit','config','core','interface')
       AND table_type='BASE TABLE';
 
-    IF v_tables <> 77 THEN
-        RAISE EXCEPTION 'Expected 77 application tables, got %', v_tables;
+    IF v_tables <> 88 THEN
+        RAISE EXCEPTION 'Expected 88 application tables, got %', v_tables;
     END IF;
 
     SELECT count(*) INTO v_views
     FROM information_schema.views
     WHERE table_schema IN ('api','core');
 
-    IF v_views <> 13 THEN
-        RAISE EXCEPTION 'Expected 13 application views, got %', v_views;
+    IF v_views <> 16 THEN
+        RAISE EXCEPTION 'Expected 16 application views, got %', v_views;
     END IF;
 
     SELECT count(*) INTO v_functions
@@ -51,8 +51,8 @@ BEGIN
     JOIN pg_namespace n ON n.oid=p.pronamespace
     WHERE n.nspname IN ('api','audit','config','core','interface');
 
-    IF v_functions <> 71 THEN
-        RAISE EXCEPTION 'Expected 71 application functions, got %', v_functions;
+    IF v_functions <> 78 THEN
+        RAISE EXCEPTION 'Expected 78 application functions, got %', v_functions;
     END IF;
 
     SELECT
@@ -89,7 +89,7 @@ BEGIN
         RAISE EXCEPTION 'Missing FINATICS LIVESTOCK delivery-class control.';
     END IF;
 
-    RAISE NOTICE 'PASS: DYNETIC 0.3.13 fresh bootstrap verified.';
+    RAISE NOTICE 'PASS: DYNETIC 0.3.14 fresh bootstrap verified.';
     RAISE NOTICE 'Tables=%, Views=%, Functions=%, FRYTRAY variants=%, Media=%',
                  v_tables, v_views, v_functions, v_variants, v_media;
 END

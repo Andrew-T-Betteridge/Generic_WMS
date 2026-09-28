@@ -1,21 +1,19 @@
-# DYNETIC WMS 0.3.13 release manifest
-# Upgrade from the validated v0.3.12 production baseline.
+# DYNETIC WMS 0.3.14 release manifest
+# Upgrade from the validated DYNETIC WMS 0.3.13 production baseline.
 #
 # Release contents:
-# - admin portal RBAC and permissions;
-# - audited admin inventory and order operations;
-# - live order monitoring and notification outbox;
-# - Stripe customer/account linkage;
-# - hardened order-to-account claim by verified email;
-# - FINatics Fry Tray carrier weight and shipping dimensions;
-# - DYNETIC WMS 0.3.13 system-version registration.
+# - Admin & Operations control plane;
+# - expanded RBAC and OWNER permission synchronisation;
+# - operational exception/read models;
+# - safe order amendments and fulfilment operations;
+# - refund/returns/DOA support;
+# - inventory movement/count foundations;
+# - notification/interface recovery;
+# - supplier/commercial administration foundations;
+# - DYNETIC WMS 0.3.14 system-version registration.
 #
-# Tests, fixtures, smoke/load scripts are deliberately absent.
+# Tests, fixtures and smoke/load scripts are deliberately absent.
 
-database/migrations/0025_admin_portal_rbac.sql
-database/migrations/0026_admin_operations.sql
-database/migrations/0027_admin_order_monitoring.sql
-database/migrations/0028_stripe_customer_linkage.sql
-database/migrations/0029_fix_claim_order_account_email.sql
-database/migrations/0030_fry_tray_shipping_data.sql
-database/migrations/0031_dynetic_wms_0_3_13.sql
+database/migrations/0032_admin_operations_control_plane.sql
+database/migrations/0033_admin_operations_rbac_sync.sql
+database/migrations/0034_dynetic_wms_0_3_14.sql
