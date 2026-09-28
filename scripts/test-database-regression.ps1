@@ -1,8 +1,20 @@
-param([string]$Database='fulfilment_test',[string]$DbUser='postgres')
+param(
+    [string]$Database='fulfilment_test',
+    [string]$DbUser='postgres',
+    [string]$HostName='localhost',
+    [int]$Port=5432
+)
 # DYNETIC_TEST_WRAPPER_GUARD_BEGIN
 . "$PSScriptRoot\Test-Safety.ps1"
 $null = Assert-DyneticTestScriptSafety -ScriptPath $MyInvocation.MyCommand.Path -BoundParameters $PSBoundParameters
 # DYNETIC_TEST_WRAPPER_GUARD_END
+# DYNETIC_TEST_LOCALHOST_GUARD_BEGIN
+$allowedTestHosts=@('localhost','127.0.0.1','::1')
+
+if($HostName -notin $allowedTestHosts){
+    throw "TEST regression safety guard blocked non-local PostgreSQL host '$HostName'."
+}
+# DYNETIC_TEST_LOCALHOST_GUARD_END
 
 $ErrorActionPreference='Stop'
 $Psql='C:\Program Files\PostgreSQL\18\bin\psql.exe'
@@ -49,20 +61,20 @@ $passed=0
 
 foreach($Test in $TestsBeforeFixture){
  Write-Host "[DB TEST] $Test"
- & $Psql -U $DbUser -d $Database -v ON_ERROR_STOP=1 -P pager=off -f (Join-Path $Root $Test)
+ & $Psql -X -h $HostName -p $Port -U $DbUser -d $Database -v ON_ERROR_STOP=1 -P pager=off -f (Join-Path $Root $Test)
  if($LASTEXITCODE -ne 0){throw "Regression failed: $Test"}
  $passed++
 }
 
 foreach($Fixture in $Fixtures){
  Write-Host "[DB FIXTURE] $Fixture"
- & $Psql -U $DbUser -d $Database -v ON_ERROR_STOP=1 -P pager=off -f (Join-Path $Root $Fixture)
+ & $Psql -X -h $HostName -p $Port -U $DbUser -d $Database -v ON_ERROR_STOP=1 -P pager=off -f (Join-Path $Root $Fixture)
  if($LASTEXITCODE -ne 0){throw "Fixture failed: $Fixture"}
 }
 
 foreach($Test in $TestsAfterFixture){
  Write-Host "[DB TEST] $Test"
- & $Psql -U $DbUser -d $Database -v ON_ERROR_STOP=1 -P pager=off -f (Join-Path $Root $Test)
+ & $Psql -X -h $HostName -p $Port -U $DbUser -d $Database -v ON_ERROR_STOP=1 -P pager=off -f (Join-Path $Root $Test)
  if($LASTEXITCODE -ne 0){throw "Regression failed: $Test"}
  $passed++
 }
