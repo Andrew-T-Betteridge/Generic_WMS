@@ -392,6 +392,31 @@ VALUES (
 
 --------------------------------------------------------------------------
 --------------------------------------------------------------------------
+--------------------------------------------------------------------------
+-- TEST POSTCODE DIRECTORY FIXTURE
+--
+-- The production postcode directory contains ~1.7m rows and is loaded
+-- separately from the schema. Regression tests only require these known
+-- postcodes to prove checkout/delivery behaviour deterministically.
+--------------------------------------------------------------------------
+INSERT INTO core.gb_postcode_directory (
+    postcode,
+    postcode_compact,
+    outward_code,
+    country_code,
+    source
+)
+VALUES
+    ('CV13 0AA','CV130AA','CV13','GB','TEST_FIXTURE'),
+    ('SW1A 1AA','SW1A1AA','SW1A','GB','TEST_FIXTURE')
+ON CONFLICT (postcode)
+DO UPDATE SET
+    postcode_compact=EXCLUDED.postcode_compact,
+    outward_code=EXCLUDED.outward_code,
+    country_code=EXCLUDED.country_code,
+    source=EXCLUDED.source;
+
+--------------------------------------------------------------------------
 -- TEST LOCAL DELIVERY ZONE
 --------------------------------------------------------------------------
 INSERT INTO config.DELIVERY_ZONE (
@@ -435,6 +460,12 @@ DO UPDATE SET
     PRIORITY=EXCLUDED.PRIORITY,
     ACTIVE=TRUE,
     LAST_UPDATE_DSTAMP=now();
+-- TEST LOCAL-CV13 BASKET SCOPE
+-- Legacy deterministic zone retained for STANDARD checkout validation only.
+UPDATE config.DELIVERY_ZONE
+SET BASKET_TYPE='STANDARD'
+WHERE CLIENT_ID='FINATICS'
+  AND ZONE_ID='LOCAL-CV13';
 -- FINAL FIXTURE CHECK
 --------------------------------------------------------------------------
 SELECT

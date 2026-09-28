@@ -127,7 +127,7 @@ BEGIN
         ) INTO v;
         IF NOT COALESCE((v->>'valid')::BOOLEAN,FALSE)
            OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v->'fulfilmentOptions') e WHERE e->>'code'='COLLECTION')
-           OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v->'fulfilmentOptions') e WHERE e->>'code'='STANDARD_CARRIER') THEN
+           OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v->'fulfilmentOptions') e WHERE e->>'code'='STANDARD_EVRI_GB') THEN
             RAISE EXCEPTION '04 STANDARD delivery options incorrect: %',v;
         END IF;
         RAISE NOTICE 'PASS 04: STANDARD delivery options';
@@ -151,7 +151,7 @@ BEGIN
             'FINATICS',jsonb_build_object(
                 'items',jsonb_build_array(jsonb_build_object('sku_id',v_standard_sku,'qty',1)),
                 'deliveryAddress',jsonb_build_object('postcode','CV13 0AA','country','GB'),
-                'fulfilmentOptionCode','STANDARD_CARRIER'
+                'fulfilmentOptionCode','STANDARD_EVRI_GB'
             )
         ) INTO v;
         IF NOT COALESCE((v->>'valid')::BOOLEAN,FALSE)
