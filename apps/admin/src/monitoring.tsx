@@ -205,7 +205,7 @@ export function NotificationBell({
     const next=await api<{
       unread:number;
       items:Obj[];
-    }>(token,"/api/admin/notifications?limit=30");
+    }>(token,"/api/admin/legacy-v0313/notifications?limit=30");
 
     const newest=next.items[0];
     const newestId=newest
