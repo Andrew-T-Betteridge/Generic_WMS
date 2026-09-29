@@ -7,9 +7,10 @@ import { createStripeRefund } from "./stripe.js";
 function codeOf(e: unknown) { return String((e as Error)?.message ?? e).split(":")[0]; }
 function sendError(reply: FastifyReply,e: unknown) {
   const c=codeOf(e);
-  const s=c.endsWith("_NOT_FOUND")?404:
+  const s=c==="AUTHENTICATION_REQUIRED"||c.startsWith("AUTH_")?401:
+          c.includes("PERMISSION")||c.includes("ADMIN_ACCESS")||c==="ADMIN_REQUIRED"?403:
+          c.endsWith("_NOT_FOUND")?404:
           c.startsWith("INVALID_")||c.endsWith("_REQUIRED")?400:
-          c.includes("PERMISSION")||c.includes("ADMIN_ACCESS")?403:
           c.includes("NOT_ALLOWED")||c.includes("NOT_RETRYABLE")?409:500;
   return reply.code(s).send({error:c});
 }

@@ -269,7 +269,7 @@ export function registerAdminMonitoringRoutes(
     }
   });
 
-  app.get("/api/admin/notifications",async(req,reply)=>{
+  app.get("/api/admin/legacy-v0313/notifications",async(req,reply)=>{
     try{
       const principal=await requirePermission(
         req,clientId,"order.read",

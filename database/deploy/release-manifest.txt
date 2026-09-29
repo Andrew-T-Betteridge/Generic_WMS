@@ -1,19 +1,11 @@
-# DYNETIC WMS 0.3.14 release manifest
-# Upgrade from the validated DYNETIC WMS 0.3.13 production baseline.
+# DYNETIC WMS 0.3.15 release manifest
+# Hotfix upgrade from the validated 0.3.14 production database baseline.
 #
 # Release contents:
-# - Admin & Operations control plane;
-# - expanded RBAC and OWNER permission synchronisation;
-# - operational exception/read models;
-# - safe order amendments and fulfilment operations;
-# - refund/returns/DOA support;
-# - inventory movement/count foundations;
-# - notification/interface recovery;
-# - supplier/commercial administration foundations;
-# - DYNETIC WMS 0.3.14 system-version registration.
+# - remove duplicate Fastify GET /api/admin/audit registration;
+# - require a real API process startup in the canonical TEST gate;
+# - register DYNETIC WMS 0.3.15.
 #
-# Tests, fixtures and smoke/load scripts are deliberately absent.
+# Tests, fixtures, smoke/load scripts are deliberately absent.
 
-database/migrations/0032_admin_operations_control_plane.sql
-database/migrations/0033_admin_operations_rbac_sync.sql
-database/migrations/0034_dynetic_wms_0_3_14.sql
+database/migrations/0035_dynetic_wms_0_3_15.sql

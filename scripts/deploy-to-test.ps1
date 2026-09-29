@@ -24,14 +24,14 @@ Write-Host 'DYNETIC WMS STRICT TEST DEPLOYMENT'
 Write-Host "PostgreSQL: $HostName`:$Port / $Database"
 Write-Host '===================================================='
 
-Write-Host '[1/3] Recreating isolated TEST database...'
+Write-Host '[1/4] Recreating isolated TEST database...'
 & "$PSScriptRoot\create-test-db.ps1" `
     -Database $Database `
     -DbUser $DbUser `
     -HostName $HostName `
     -Port $Port
 
-Write-Host '[2/3] Fresh bootstrapping repository into TEST...'
+Write-Host '[2/4] Fresh bootstrapping repository into TEST...'
 & "$PSScriptRoot\Bootstrap-FreshDatabase.ps1" `
     -Target TEST `
     -Database $Database `
@@ -39,7 +39,7 @@ Write-Host '[2/3] Fresh bootstrapping repository into TEST...'
     -Port $Port `
     -DbUser $DbUser
 
-Write-Host '[3/3] Running database regression...'
+Write-Host '[3/4] Running database regression...'
 & "$PSScriptRoot\test-database-regression.ps1" `
     -Database $Database `
     -DbUser $DbUser `
@@ -47,4 +47,13 @@ Write-Host '[3/3] Running database regression...'
     -Port $Port
 
 Write-Host ''
-Write-Host 'DYNETIC WMS STRICT TEST DEPLOYMENT PASSED.'
+Write-Host '[4/4] Running API route registration/startup smoke...'
+& "$PSScriptRoot\test-api-startup.ps1" `
+    -Database $Database `
+    -DbUser $DbUser
+
+if($LASTEXITCODE -ne 0){
+    throw 'TEST API startup smoke failed.'
+}
+
+Write-Host ''Write-Host 'DYNETIC WMS STRICT TEST DEPLOYMENT PASSED.'

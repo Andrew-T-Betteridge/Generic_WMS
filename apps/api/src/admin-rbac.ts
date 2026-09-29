@@ -847,7 +847,7 @@ export function registerAdminAccessRoutes(
     }
   });
 
-  app.get("/api/admin/audit", async (req, reply) => {
+  app.get("/api/admin/legacy-v0313/audit", async (req, reply) => {
     try {
       await requirePermission(req, clientId, "audit.read");
       const query = req.query as {
