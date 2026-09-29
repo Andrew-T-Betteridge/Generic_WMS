@@ -1,4 +1,5 @@
 import type { Me } from "../control-plane";
+import { createHasPermission } from "../lib/permissions";
 
 // Shapes match GET /api/admin/me in the WMS API (admin-rbac.ts):
 // { adminUserId, email, displayName, roles, permissions, bootstrap }
@@ -26,4 +27,24 @@ export const warehouseMe: Me = {
   bootstrap: false,
 };
 
-export const hasFor = (me: Me) => (permission: string) => me.permissions.includes(permission);
+/** Operator allowed to read orders and exceptions, but not act on them. */
+export const orderViewerMe: Me = {
+  adminUserId: "5e1a2c3d-4b5f-4a6e-9c7d-8e9f0a1b2c3d",
+  email: "support@example.com",
+  displayName: "Support",
+  roles: ["SUPPORT"],
+  permissions: ["admin.access", "order.read", "exception.read"],
+  bootstrap: false,
+};
+
+/** The API grants everything to a principal holding "*" (admin-rbac.ts requirePermission). */
+export const wildcardMe: Me = {
+  adminUserId: "9f8e7d6c-5b4a-4392-8170-6f5e4d3c2b1a",
+  email: "owner@example.com",
+  displayName: "Owner",
+  roles: ["OWNER"],
+  permissions: ["*"],
+  bootstrap: false,
+};
+
+export const hasFor = (me: Me) => createHasPermission(me.permissions);

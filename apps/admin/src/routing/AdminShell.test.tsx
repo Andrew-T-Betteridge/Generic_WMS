@@ -1,26 +1,32 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation, useNavigate } from "react-router";
 import type { Me } from "../control-plane";
-import { fullAccessMe, hasFor, warehouseMe } from "../test/me-fixtures";
+import { fullAccessMe, hasFor, orderViewerMe, warehouseMe, wildcardMe } from "../test/me-fixtures";
 
 // The operational screens call the live WMS API, so each one is replaced by a
 // marker. This test covers the routed shell only, not the screens themselves.
 vi.mock("../control-plane", () => {
   const marker = (name: string) => () => <div data-testid="screen">{name}</div>;
   return {
-    OperationsDashboard: marker("OperationsDashboard"), OrdersPage: marker("OrdersPage"),
     PaymentsPage: marker("PaymentsPage"), ReturnsPage: marker("ReturnsPage"),
-    CustomersPage: marker("CustomersPage"), InventoryPage: marker("InventoryPage"),
+    CustomersPage: marker("CustomersPage"),
     FulfilmentPage: marker("FulfilmentPage"), CataloguePage: marker("CataloguePage"),
     PromotionsPage: marker("PromotionsPage"), GiftCardsPage: marker("GiftCardsPage"),
     InboundPage: marker("InboundPage"), DeliveryPage: marker("DeliveryPage"),
     CommunicationsPage: marker("CommunicationsPage"), InterfacesPage: marker("InterfacesPage"),
-    ExceptionsPage: marker("ExceptionsPage"), AuditPage: marker("AuditPage"),
-    AccessPage: marker("AccessPage"), SystemPage: marker("SystemPage"),
+    AuditPage: marker("AuditPage"), AccessPage: marker("AccessPage"), SystemPage: marker("SystemPage"),
   };
 });
+vi.mock("../features/dashboard/ControlCentre", () => ({ ControlCentre: () => <div data-testid="screen">OperationsDashboard</div> }));
+vi.mock("../features/orders/OrdersPage", () => ({ OrdersPage: () => <div data-testid="screen">OrdersPage</div> }));
+vi.mock("../features/orders/OrderDetailPage", async () => {
+  const { useParams } = await import("react-router");
+  return { OrderDetailPage: () => <div data-testid="screen">OrderDetailPage:{useParams().orderId}</div> };
+});
+vi.mock("../features/inventory/InventoryPage", () => ({ InventoryPage: () => <div data-testid="screen">InventoryPage</div> }));
+vi.mock("../features/exceptions/ExceptionsPage", () => ({ ExceptionsPage: () => <div data-testid="screen">ExceptionsPage</div> }));
 vi.mock("../monitoring", () => ({ NotificationBell: () => <div data-testid="bell" /> }));
 
 const { AdminShell } = await import("./AdminShell");
@@ -102,8 +108,44 @@ describe("AdminShell routing", () => {
     expect(screen.getByRole("navigation", { name: "Breadcrumb" }).textContent).toBe("Not found");
   });
 
-  it("does not invent record-detail routes", () => {
+  it("deep links to an order record with breadcrumbs back to Orders", () => {
     renderAt("/orders/ORD-1001");
+    expect(screenName()).toBe("OrderDetailPage:ORD-1001");
+    const crumbs = screen.getByRole("navigation", { name: "Breadcrumb" });
+    expect(crumbs.textContent).toBe("OperationsOrdersOrder ORD-1001");
+    expect(within(crumbs).getByRole("link", { name: "Orders" }).getAttribute("href")).toBe("/orders");
+    // The Orders nav entry stays highlighted while a record is open.
+    expect(screen.getByRole("link", { name: "Orders" , current: "page" })).toBeTruthy();
+  });
+
+  it("forbids an order record to a user without order.read", () => {
+    renderAt("/orders/ORD-1001", warehouseMe);
+    expect(screen.queryByTestId("screen")).toBeNull();
+    expect(screen.getByRole("alert").textContent).toContain("does not have access");
+  });
+
+  it("still returns Not Found for addresses deeper than a record", () => {
+    renderAt("/orders/ORD-1001/unknown");
     expect(screen.getByRole("heading", { name: "Page not found" })).toBeTruthy();
+  });
+
+  it("interprets the wildcard permission the same way as the API", () => {
+    renderAt("/exceptions", wildcardMe);
+    expect(screenName()).toBe("ExceptionsPage");
+    const nav = screen.getByRole("navigation", { name: "Admin sections" });
+    expect(nav.querySelectorAll("a")).toHaveLength(18);
+  });
+
+  it("lets a read-only order user open Orders and Exceptions (route and screen agree)", () => {
+    renderAt("/orders", orderViewerMe);
+    expect(screenName()).toBe("OrdersPage");
+    cleanup();
+    renderAt("/exceptions", orderViewerMe);
+    expect(screenName()).toBe("ExceptionsPage");
+  });
+
+  it("uses the configured title for the brand mark, not a hard-coded deployment", () => {
+    renderAt("/");
+    expect(screen.getByText("WA")).toBeTruthy();
   });
 });

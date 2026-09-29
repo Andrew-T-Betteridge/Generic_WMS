@@ -2,18 +2,23 @@ import type { ReactElement } from "react";
 import type { Token } from "../admin-api";
 import {
   AccessPage, AuditPage, CataloguePage, CommunicationsPage, CustomersPage, DeliveryPage,
-  ExceptionsPage, FulfilmentPage, GiftCardsPage, InboundPage, InterfacesPage, InventoryPage,
-  OperationsDashboard, OrdersPage, PaymentsPage, PromotionsPage, ReturnsPage, SystemPage,
+  FulfilmentPage, GiftCardsPage, InboundPage, InterfacesPage,
+  PaymentsPage, PromotionsPage, ReturnsPage, SystemPage,
   type Me,
 } from "../control-plane";
+import { ControlCentre } from "../features/dashboard/ControlCentre";
+import { ExceptionsPage } from "../features/exceptions/ExceptionsPage";
+import { InventoryPage } from "../features/inventory/InventoryPage";
+import { OrderDetailPage } from "../features/orders/OrderDetailPage";
+import { OrdersPage } from "../features/orders/OrdersPage";
 import type { AdminRouteId, HasPermission } from "./admin-routes";
 
-export type PageContext = { token: Token; has: HasPermission; me: Me };
+export type PageContext = { token: Token; has: HasPermission; me: Me; environment: string };
 
-// Existing screens rendered exactly as before, with the same props.
 export const ROUTE_PAGES: Record<AdminRouteId, (ctx: PageContext) => ReactElement> = {
-  dashboard: ({ token, me }) => <OperationsDashboard token={token} me={me} />,
-  orders: ({ token, has }) => <OrdersPage token={token} has={has} />,
+  dashboard: ({ token, has, environment }) => <ControlCentre token={token} has={has} environment={environment} />,
+  orders: ({ token }) => <OrdersPage token={token} />,
+  orderDetail: ({ token, has }) => <OrderDetailPage token={token} has={has} />,
   payments: ({ token, has }) => <PaymentsPage token={token} has={has} />,
   returns: ({ token, has }) => <ReturnsPage token={token} has={has} />,
   customers: ({ token }) => <CustomersPage token={token} />,

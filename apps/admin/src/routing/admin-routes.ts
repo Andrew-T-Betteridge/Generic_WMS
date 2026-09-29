@@ -1,9 +1,13 @@
+import { matchPath } from "react-router";
+import type { HasPermission } from "../lib/permissions";
+
 // Route table for the existing Admin screens.
 // Permissions are copied unchanged from the previous state-based navigation:
 // a route is available when the user holds ANY of the listed permissions.
 // These checks only control presentation; the WMS API remains authoritative.
 
 export type AdminRouteId =
+  | "orderDetail"
   | "dashboard" | "orders" | "payments" | "returns" | "customers" | "inventory" | "fulfilment"
   | "catalogue" | "promotions" | "giftcards"
   | "inbound" | "delivery"
@@ -15,11 +19,14 @@ export type AdminRoute = {
   label: string;
   section: string;
   permissions: string[];
+  /** Record-detail routes are reachable by link only and never appear in navigation. */
+  parent?: AdminRouteId;
 };
 
 export const ADMIN_ROUTES: AdminRoute[] = [
   { id: "dashboard", path: "/", label: "Control centre", section: "Operations", permissions: ["dashboard.read"] },
   { id: "orders", path: "/orders", label: "Orders", section: "Operations", permissions: ["order.read"] },
+  { id: "orderDetail", path: "/orders/:orderId", label: "Order", section: "Operations", permissions: ["order.read"], parent: "orders" },
   { id: "payments", path: "/payments", label: "Payments", section: "Operations", permissions: ["payment.read"] },
   { id: "returns", path: "/returns", label: "Returns & claims", section: "Operations", permissions: ["return.read"] },
   { id: "customers", path: "/customers", label: "Customers", section: "Operations", permissions: ["order.read"] },
@@ -38,22 +45,39 @@ export const ADMIN_ROUTES: AdminRoute[] = [
   { id: "system", path: "/system", label: "System", section: "Platform", permissions: ["system.read"] },
 ];
 
-export type HasPermission = (permission: string) => boolean;
+export type { HasPermission } from "../lib/permissions";
 
 export function canAccessRoute(route: AdminRoute, has: HasPermission): boolean {
   return route.permissions.some(has);
 }
 
-export function findRouteByPath(pathname: string): AdminRoute | undefined {
+export type RouteMatch = { route: AdminRoute; params: Record<string, string | undefined> };
+
+export function matchRoute(pathname: string): RouteMatch | undefined {
   const normalised = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
-  return ADMIN_ROUTES.find((route) => route.path === normalised);
+  for (const route of ADMIN_ROUTES) {
+    const m = matchPath({ path: route.path, end: true }, normalised);
+    if (m) return { route, params: m.params };
+  }
+  return undefined;
 }
+
+export function findRouteByPath(pathname: string): AdminRoute | undefined {
+  return matchRoute(pathname)?.route;
+}
+
+export function routeById(id: AdminRouteId): AdminRoute {
+  return ADMIN_ROUTES.find((r) => r.id === id)!;
+}
+
+/** Routes that belong in the sidebar (excludes record-detail routes). */
+export const NAV_ROUTES = ADMIN_ROUTES.filter((r) => !r.parent);
 
 export type NavSection = { label: string; routes: AdminRoute[] };
 
 export function visibleNavSections(has: HasPermission): NavSection[] {
   const sections: NavSection[] = [];
-  for (const route of ADMIN_ROUTES) {
+  for (const route of NAV_ROUTES) {
     if (!canAccessRoute(route, has)) continue;
     let section = sections.find((s) => s.label === route.section);
     if (!section) {
@@ -67,5 +91,5 @@ export function visibleNavSections(has: HasPermission): NavSection[] {
 
 /** First route the user may open; mirrors the previous "dashboard, else first available" fallback. */
 export function firstAccessibleRoute(has: HasPermission): AdminRoute | undefined {
-  return ADMIN_ROUTES.find((route) => canAccessRoute(route, has));
+  return NAV_ROUTES.find((route) => canAccessRoute(route, has));
 }
