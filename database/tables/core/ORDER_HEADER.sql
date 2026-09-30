@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS core.ORDER_HEADER (
     PRIORITY                       NUMERIC(4),
     CONSIGNMENT                    VARCHAR(20),
     DELIVERY_POINT                 VARCHAR(15),
+    SITE_ID              varchar(30) REFERENCES core.SITE(SITE_ID),
     FROM_SITE_ID                   VARCHAR(10),
     TO_SITE_ID                     VARCHAR(10),
     OWNER_ID                       VARCHAR(10),

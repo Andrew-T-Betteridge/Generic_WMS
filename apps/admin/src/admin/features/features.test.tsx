@@ -12,6 +12,7 @@ const { OrderDetailPage } = await import("./orders/OrderDetailPage");
 const { ExceptionsPage } = await import("./exceptions/ExceptionsPage");
 const { InventoryPage } = await import("./inventory/InventoryPage");
 const { ControlCentre } = await import("./dashboard/ControlCentre");
+const { ReturnsPage, AuditPage, CataloguePage } = await import("../control-plane");
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
@@ -39,9 +40,11 @@ describe("Orders list", () => {
     at("/orders?payment=PAID", "/orders", <OrdersPage token={token} />);
     await screen.findByText("No orders match these filters");
     expect(calls[0].path).toContain("paymentStatus=PAID");
-    await userEvent.selectOptions(screen.getByLabelText("Fulfilment status"), "SHIPPED");
-    await waitFor(() => expect(calls.at(-1)!.path).toContain("fulfilmentStatus=SHIPPED"));
-    expect(loc()).toContain("fulfilment=SHIPPED");
+    await userEvent.click(screen.getByRole("checkbox", { name: "SHIPPED" }));
+    await waitFor(() => expect(calls.at(-1)!.path).toContain("fulfilmentStatuses="));
+    expect(calls.at(-1)!.path).toContain("SHIPPED");
+    expect(loc()).toContain("fulfilmentStatuses=");
+    expect(loc()).toContain("SHIPPED");
     await userEvent.type(screen.getByLabelText("Search orders"), "a@example.com{enter}");
     await waitFor(() => expect(calls.at(-1)!.path).toContain("q=a%40example.com"));
   });
@@ -49,7 +52,7 @@ describe("Orders list", () => {
   it("distinguishes an empty dataset from filtered no-results", async () => {
     mockApi(on(/^\/api\/admin\/orders\?/, 200, []));
     at("/orders", "/orders", <OrdersPage token={token} />);
-    expect(await screen.findByText("No orders yet")).toBeTruthy();
+    expect(await screen.findByText("No orders match these filters")).toBeTruthy();
   });
 
   it("opens the order record when a row is chosen", async () => {
@@ -174,11 +177,166 @@ describe("Inventory", () => {
 
 describe("Control centre", () => {
   it("shows backend metrics as returned, without re-aggregating", async () => {
-    mockApi(on("/api/admin/operations/dashboard", 200, { summary: { orders_today: 4, revenue_today: 99, exception_count: 3, open_picks: 2, failed_notifications: 0, open_cases: 1 }, topExceptions: [] }));
+    mockApi(on("/api/admin/operations/dashboard", 200, { summary: { outstanding_orders: 4, payment_attention: 1, exception_count: 3, open_picks: 2, failed_notifications: 0, open_cases: 1 }, topExceptions: [] }));
     at("/", "/", <ControlCentre token={token} has={createHasPermission(["dashboard.read", "exception.read"])} environment="TEST" />);
     expect(await screen.findByText("Open exceptions")).toBeTruthy();
     expect(screen.getByText("3")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Review →" }).getAttribute("href")).toBe("/exceptions");
     expect(screen.getByText("All clear")).toBeTruthy();
+  });
+});
+
+describe("Returns & audit functional pass", () => {
+  it("starts case creation from an outbound order search", async () => {
+    mockApi(
+      on(/^\/api\/admin\/returns\?/, 200, []),
+      on(/^\/api\/admin\/orders\?q=/, 200, [{
+        ...ORDER,
+        customer_name: "Ada Customer",
+        status: "ALLOCATED",
+        fulfilment_status: "ALLOCATED",
+        payment_status: "PAID"
+      }]),
+      on(/^\/api\/admin\/config\/reason-codes\?/, 200, [])
+    );
+
+    render(<ReturnsPage token={token} has={createHasPermission(["return.read","return.create"])} />);
+
+    await userEvent.type(screen.getByPlaceholderText("Order ID, customer ID or email"), "ORD-1");
+    const create = await screen.findByRole("button", { name: "Create return / claim" });
+    await userEvent.click(create);
+
+    expect(await screen.findByRole("heading", { name: "New return / claim" })).toBeTruthy();
+    expect(screen.getByText(/Selected order:/)).toBeTruthy();
+    expect(screen.getAllByText("ORD-1").length).toBeGreaterThan(0);
+  });
+
+  it("loads audit metadata and renders field-level changes", async () => {
+    mockApi(
+      on("/api/admin/audit/meta", 200, { entityTypes: ["ORDER"], actions: ["UPDATE"] }),
+      on(/^\/api\/admin\/audit\?/, 200, [{
+        audit_id: "A1",
+        entity_type: "ORDER",
+        entity_id: "ORD-1",
+        action: "UPDATE",
+        changed_by: "ops@example.com",
+        created_dstamp: "2026-09-30T12:00:00Z",
+        before_data: { STATUS: "PENDING" },
+        after_data: { STATUS: "PAID" }
+      }])
+    );
+
+    render(<AuditPage token={token} />);
+
+    expect(await screen.findByRole("option", { name: "ORDER" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "UPDATE" })).toBeTruthy();
+    expect(await screen.findByText("1 field changed")).toBeTruthy();
+    expect(screen.getByText(/PENDING/).textContent).toContain("PAID");
+  });
+});
+
+describe("Catalogue create contract", () => {
+  it("loads categories and requires one before product creation", async () => {
+    mockApi(
+      on(/^\/api\/admin\/products\?/, 200, []),
+      on("/api/admin/product-categories", 200, [
+        {category_code:"FISH",category_name:"Fish"},
+        {category_code:"EQUIPMENT",category_name:"Equipment"}
+      ])
+    );
+
+    render(<CataloguePage token={token} has={createHasPermission(["product.read","product.create"])} />);
+
+    await userEvent.click(await screen.findByRole("button",{name:"Create product"}));
+
+    expect(await screen.findByRole("option",{name:"Fish (FISH)"})).toBeTruthy();
+    expect(screen.getByRole("option",{name:"Equipment (EQUIPMENT)"})).toBeTruthy();
+    expect(screen.getByLabelText("Category")).toBeTruthy();
+  });
+});
+
+describe("Return case lifecycle statuses", () => {
+  it("exposes the awaiting-customer status used by the return-case contract", async () => {
+    mockApi(on(/^\/api\/admin\/returns\?/, 200, []));
+
+    render(<ReturnsPage
+      token={token}
+      has={createHasPermission(["return.read"])}
+    />);
+
+    expect(
+      await screen.findByRole("option", { name: "AWAITING_CUSTOMER" })
+    ).toBeTruthy();
+  });
+});
+
+describe("Return item-level intake", () => {
+  it("selects an outbound order line and posts its quantity", async () => {
+    const { calls } = mockApi(
+      on(/^\/api\/admin\/returns\?/, 200, []),
+      on(/^\/api\/admin\/orders\?q=/, 200, [{
+        ...ORDER,
+        customer_name: "Ada Customer"
+      }]),
+      on("/api/admin/orders/ORD-1", 200, {
+        order: ORDER,
+        lines: [{
+          line_id: 1,
+          sku_id: "SKU-9",
+          qty_ordered: 2
+        }]
+      }),
+      on(/^\/api\/admin\/config\/reason-codes\?/, 200, [{
+        reason_code: "DOA",
+        description: "Dead on arrival"
+      }]),
+      on("/api/admin/returns", 201, {
+        return_case_id: "R1",
+        order_id: "ORD-1"
+      }, "POST")
+    );
+
+    render(<ReturnsPage
+      token={token}
+      has={createHasPermission(["return.read","return.create"])}
+    />);
+
+    await userEvent.type(
+      screen.getByPlaceholderText("Order ID, customer ID or email"),
+      "ORD-1"
+    );
+
+    await userEvent.click(
+      await screen.findByRole("button",{name:"Create return / claim"})
+    );
+
+    const qty=await screen.findByLabelText("Qty for SKU-9");
+    await userEvent.clear(qty);
+    await userEvent.type(qty,"1");
+
+    await userEvent.type(
+      screen.getByLabelText("Expected resolution"),
+      "Replacement"
+    );
+
+    await userEvent.click(
+      screen.getByRole("button",{name:"Create case"})
+    );
+
+    await waitFor(()=>{
+      expect(calls.some(c=>c.path==="/api/admin/returns"&&c.method==="POST")).toBe(true);
+    });
+
+    const call=calls.find(c=>c.path==="/api/admin/returns"&&c.method==="POST");
+    const body=JSON.parse(call?.body??"{}");
+
+    expect(body.orderId).toBe("ORD-1");
+    expect(body.lines).toEqual([{
+      lineId:1,
+      qty:1,
+      issueType:"DOA",
+      resolution:"Replacement"
+    }]);
+    expect(body.operationId).toBeTruthy();
   });
 });

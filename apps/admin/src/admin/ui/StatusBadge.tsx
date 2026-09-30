@@ -7,7 +7,7 @@ const TONES: Record<string, Tone> = {};
 const assign = (tone: Tone, codes: string[]) => codes.forEach((c) => (TONES[c] = tone));
 assign("good", ["PAID", "READY", "SHIPPED", "DELIVERED", "COMPLETE", "COMPLETED", "RESOLVED", "CLOSED", "SUBMITTED", "REQUEUED", "ACTIVE", "ALLOCATED", "SENT", "SUCCESS", "REFUNDED"]);
 assign("bad", ["FAILED", "ERROR", "CANCELLED", "REJECTED", "DEAD", "DECLINED"]);
-assign("warn", ["PENDING", "OPEN", "STARTED", "PART_ALLOCATED", "PART_REFUNDED", "HOLD", "REQUESTED", "UNALLOCATED", "RETRY", "QUEUED"]);
+assign("warn", ["PENDING", "OPEN", "STARTED", "PART_ALLOCATED", "PART_REFUNDED", "HOLD", "AWAITING_CUSTOMER", "REQUESTED", "UNALLOCATED", "RETRY", "QUEUED"]);
 assign("info", ["AUTHORISED", "RESERVED", "PICKING", "PACKED", "IN_PROGRESS", "PROCESSING"]);
 
 export function toneFor(status: unknown): Tone {

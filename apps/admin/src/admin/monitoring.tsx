@@ -196,7 +196,7 @@ export function NotificationBell({
 
   const[open,setOpen]=useState(false);
   const[enabled,setEnabled]=useState(
-    localStorage.getItem("finatics-alerts-enabled")==="true"
+    (localStorage.getItem("dynetic-admin-alerts-enabled")??localStorage.getItem("finatics-alerts-enabled"))==="true"
   );
 
   const lastSeen=useRef<string|null>(null);
@@ -264,9 +264,10 @@ export function NotificationBell({
 
     setEnabled(true);
     localStorage.setItem(
-      "finatics-alerts-enabled",
+      "dynetic-admin-alerts-enabled",
       "true",
     );
+    localStorage.removeItem("finatics-alerts-enabled");
 
     playAlert();
   }

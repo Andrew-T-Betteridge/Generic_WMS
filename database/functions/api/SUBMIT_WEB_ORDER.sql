@@ -14,6 +14,7 @@ DECLARE
     v_interface_id UUID;
     v_source_order_id VARCHAR(100);
     v_order_id VARCHAR(20);
+    v_site_id VARCHAR(30);
     v_address_id VARCHAR(15);
     v_customer_id VARCHAR(15);
     v_currency VARCHAR(3);
@@ -55,6 +56,27 @@ DECLARE
     v_requires_delivery_address BOOLEAN := FALSE;
 BEGIN
     v_source_order_id := NULLIF(TRIM(p_payload->>'idempotencyKey'),'');
+
+    -- Resolve operational site from server-controlled client/site
+    -- applicability. CLIENT and SITE are independent masters.
+    -- The browser does not establish tenant/site authority.
+    SELECT cs.SITE_ID
+      INTO v_site_id
+      FROM config.CLIENT_SITE cs
+      JOIN core.SITE s
+        ON s.SITE_ID=cs.SITE_ID
+       AND s.ACTIVE=true
+     WHERE cs.CLIENT_ID=p_client_id
+       AND cs.ACTIVE=true
+     ORDER BY
+           CASE WHEN cs.DEFAULT_FULFILMENT THEN 0 ELSE 1 END,
+           cs.SITE_ID
+     LIMIT 1;
+
+    IF v_site_id IS NULL THEN
+        RAISE EXCEPTION 'SITE_NOT_CONFIGURED_FOR_CLIENT: %', p_client_id;
+    END IF;
+
     IF v_source_order_id IS NULL THEN
         RAISE EXCEPTION 'IDEMPOTENCY_KEY_REQUIRED';
     END IF;
@@ -630,6 +652,7 @@ BEGIN
 
         INSERT INTO interface.ORDER_HEADER_IF (
             CLIENT_ID,
+        SITE_ID,
             SOURCE_SYSTEM,
             SOURCE_ORDER_ID,
             CUSTOMER_ID,
@@ -644,6 +667,7 @@ BEGIN
         )
         VALUES (
             p_client_id,
+        v_site_id,
             'WEBSITE',
             v_source_order_id,
             v_customer_id,

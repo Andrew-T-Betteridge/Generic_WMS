@@ -11,7 +11,7 @@ function sendError(reply: FastifyReply,e: unknown) {
           c.includes("PERMISSION")||c.includes("ADMIN_ACCESS")||c==="ADMIN_REQUIRED"?403:
           c.endsWith("_NOT_FOUND")?404:
           c.startsWith("INVALID_")||c.endsWith("_REQUIRED")?400:
-          c.includes("NOT_ALLOWED")||c.includes("NOT_RETRYABLE")?409:500;
+          c.includes("NOT_ALLOWED")||c.includes("NOT_RETRYABLE")||c.includes("CONFLICT")?409:500;
   return reply.code(s).send({error:c});
 }
 function lim(v:unknown,d=50,m=250){const n=Number(v??d);return Math.max(1,Math.min(m,Number.isFinite(n)?Math.floor(n):d));}
@@ -25,15 +25,50 @@ async function attempt(clientId:string,p:any,actionCode:string,entityType:string
 }
 export function registerAdminOperationsRoutes(app:FastifyInstance,clientId:string){
 
-  app.get("/api/admin/operations/dashboard",async(req,reply)=>{
+
+  // 0.3.18 operational context.
+  // SITE is an independent master. config.CLIENT_SITE only describes
+  // which client/site combinations are operationally applicable.
+  app.get("/api/admin/context", async (req, reply) => {
+    const principal = await requirePermission(req, clientId, "dashboard.read");
+
+    const sites = await db.query(
+      `select
+          s.SITE_ID as site_id,
+          s.DESCRIPTION as description,
+          s.SITE_TYPE as site_type,
+          s.TIME_ZONE as time_zone,
+          cs.DEFAULT_FULFILMENT as default_fulfilment
+         from config.CLIENT_SITE cs
+         join core.SITE s
+           on s.SITE_ID=cs.SITE_ID
+          and s.ACTIVE=true
+        where cs.CLIENT_ID=$1
+          and cs.ACTIVE=true
+        order by cs.DEFAULT_FULFILMENT desc, s.SITE_ID`,
+      [clientId],
+    );
+
+    return {
+      clientId,
+      sites: sites.rows,
+      principal: {
+        email: principal.email,
+        displayName: principal.displayName,
+        permissions: principal.permissions,
+      },
+    };
+  });
+
+app.get("/api/admin/operations/dashboard",async(req,reply)=>{
     try{
       await requirePermission(req,clientId,"dashboard.read");
       const [s,e]=await Promise.all([
         db.query(`select
-          (select count(*)::int from core.ORDER_HEADER where CLIENT_ID=$1 and ORDER_DATE>=CURRENT_DATE) orders_today,
-          (select coalesce(sum(ORDER_VALUE),0) from core.ORDER_HEADER where CLIENT_ID=$1 and PAYMENT_STATUS='PAID' and ORDER_DATE>=CURRENT_DATE) revenue_today,
+          (select count(*)::int from core.ORDER_HEADER where CLIENT_ID=$1 and STATUS not in('SHIPPED','DELIVERED','CANCELLED')) outstanding_orders,
+          (select count(*)::int from core.ORDER_HEADER where CLIENT_ID=$1 and PAYMENT_STATUS='PENDING' and STATUS<>'CANCELLED') payment_attention,
           (select count(*)::int from core.ADMIN_EXCEPTION_WORKBENCH where CLIENT_ID=$1) exception_count,
-          (select count(*)::int from core.PICK_TASK where CLIENT_ID=$1 and STATUS in('OPEN','STARTED')) open_picks,
+          (select count(*)::int from core.PICK_TASK where CLIENT_ID=$1 and STATUS in('OPEN','PART_PICKED')) open_picks,
           (select count(*)::int from interface.NOTIFICATION_OUTBOX where CLIENT_ID=$1 and STATUS in('FAILED','ERROR')) failed_notifications,
           (select count(*)::int from core.RETURN_CASE where CLIENT_ID=$1 and STATUS not in('CLOSED','REJECTED')) open_cases`,[clientId]),
         db.query(`select * from core.ADMIN_EXCEPTION_WORKBENCH where CLIENT_ID=$1 order by AGE_MINUTES desc nulls last limit 25`,[clientId])
@@ -171,7 +206,168 @@ export function registerAdminOperationsRoutes(app:FastifyInstance,clientId:strin
     }catch(e){return sendError(reply,e);}
   });
 
-  app.get("/api/admin/inventory",async(req,reply)=>{
+
+  // Customer operational projection derived from authoritative order history.
+  app.get("/api/admin/customers", async (req, reply) => {
+    await requirePermission(req, clientId, "order.read");
+
+    const query = req.query as {
+      q?: string;
+      siteId?: string;
+      limit?: string;
+      offset?: string;
+    };
+
+    const q = String(query.q ?? "").trim();
+    const siteId = String(query.siteId ?? "").trim() || null;
+    const limit = Math.min(Math.max(Number(query.limit ?? 50) || 50, 1), 200);
+    const offset = Math.max(Number(query.offset ?? 0) || 0, 0);
+
+    if (siteId) {
+      const allowed = await db.query(
+        `select 1
+           from config.CLIENT_SITE
+          where CLIENT_ID=$1
+            and SITE_ID=$2
+            and ACTIVE=true`,
+        [clientId, siteId],
+      );
+
+      if (!allowed.rowCount)
+        return reply.code(403).send({ error: "SITE_NOT_AUTHORISED" });
+    }
+
+    const result = await db.query(
+      `with customer_orders as (
+         select
+           nullif(trim(CUSTOMER_ID),'') as customer_id,
+           nullif(trim(CUSTOMER_EMAIL),'') as email,
+           nullif(trim(CUSTOMER_PHONE),'') as phone,
+           nullif(trim(
+             concat_ws(' ',
+               nullif(trim(CUSTOMER_FIRST_NAME),''),
+               nullif(trim(CUSTOMER_LAST_NAME),'')
+             )
+           ),'') as customer_name,
+           ORDER_ID,
+           SITE_ID,
+           ORDER_TOTAL,
+           CREATED_DSTAMP
+         from core.ORDER_HEADER
+        where CLIENT_ID=$1
+          and ($2::varchar is null or SITE_ID=$2)
+       ),
+       grouped as (
+         select
+           coalesce(
+             customer_id,
+             lower(email),
+             lower(customer_name) || ':' || coalesce(phone,'')
+           ) as customer_key,
+           max(customer_id) as customer_id,
+           max(email) as email,
+           max(phone) as phone,
+           max(customer_name) as customer_name,
+           count(*)::integer as order_count,
+           coalesce(sum(ORDER_TOTAL),0) as lifetime_value,
+           max(CREATED_DSTAMP) as last_order_at,
+           (array_agg(ORDER_ID order by CREATED_DSTAMP desc))[1] as last_order_id
+         from customer_orders
+        where customer_id is not null
+           or email is not null
+           or customer_name is not null
+        group by coalesce(
+          customer_id,
+          lower(email),
+          lower(customer_name) || ':' || coalesce(phone,'')
+        )
+       )
+       select *
+         from grouped
+        where $3=''
+           or coalesce(customer_id,'') ilike '%' || $3 || '%'
+           or coalesce(email,'') ilike '%' || $3 || '%'
+           or coalesce(phone,'') ilike '%' || $3 || '%'
+           or coalesce(customer_name,'') ilike '%' || $3 || '%'
+        order by last_order_at desc nulls last
+        limit $4 offset $5`,
+      [clientId, siteId, q, limit, offset],
+    );
+
+    return {
+      items: result.rows,
+      limit,
+      offset,
+      siteId,
+      query: q,
+    };
+  });
+
+  app.get("/api/admin/customers/:customerKey", async (req, reply) => {
+    await requirePermission(req, clientId, "order.read");
+
+    const { customerKey } = req.params as { customerKey: string };
+    const query = req.query as { siteId?: string };
+    const siteId = String(query.siteId ?? "").trim() || null;
+
+    if (siteId) {
+      const allowed = await db.query(
+        `select 1
+           from config.CLIENT_SITE
+          where CLIENT_ID=$1
+            and SITE_ID=$2
+            and ACTIVE=true`,
+        [clientId, siteId],
+      );
+
+      if (!allowed.rowCount)
+        return reply.code(403).send({ error: "SITE_NOT_AUTHORISED" });
+    }
+
+    const orders = await db.query(
+      `select
+          ORDER_ID,
+          SITE_ID,
+          ORDER_STATUS,
+          PAYMENT_STATUS,
+          FULFILMENT_STATUS,
+          CUSTOMER_ID,
+          CUSTOMER_EMAIL,
+          CUSTOMER_PHONE,
+          CUSTOMER_FIRST_NAME,
+          CUSTOMER_LAST_NAME,
+          ORDER_TOTAL,
+          CREATED_DSTAMP
+         from core.ORDER_HEADER
+        where CLIENT_ID=$1
+          and ($2::varchar is null or SITE_ID=$2)
+          and (
+               CUSTOMER_ID=$3
+            or lower(CUSTOMER_EMAIL)=lower($3)
+          )
+        order by CREATED_DSTAMP desc`,
+      [clientId, siteId, customerKey],
+    );
+
+    if (!orders.rowCount)
+      return reply.code(404).send({ error: "CUSTOMER_NOT_FOUND" });
+
+    const first = orders.rows[0];
+
+    return {
+      customer: {
+        customerId: first.customer_id,
+        email: first.customer_email,
+        phone: first.customer_phone,
+        firstName: first.customer_first_name,
+        lastName: first.customer_last_name,
+        orderCount: orders.rowCount,
+      },
+      orders: orders.rows,
+    };
+  });
+
+app.get("/api/admin/inventory",async(req,reply)=>{
     try{
       await requirePermission(req,clientId,"inventory.read");const q=req.query as any;const x=String(q.q??"").trim()||null;
       const r=await db.query(`select * from core.INVENTORY_AVAILABILITY where CLIENT_ID=$1
@@ -193,7 +389,134 @@ export function registerAdminOperationsRoutes(app:FastifyInstance,clientId:strin
     }catch(e){return sendError(reply,e);}
   });
 
-  app.post("/api/admin/inventory/:inventoryKey/move",async(req,reply)=>{
+
+  app.post("/api/admin/inventory/:inventoryKey/count", async (req, reply) => {
+    const principal = await requirePermission(req, clientId, "inventory.adjust");
+    const { inventoryKey } = req.params as { inventoryKey: string };
+
+    const body = req.body as {
+      newQuantity?: number;
+      expectedCurrentQuantity?: number;
+      reasonCode?: string;
+      note?: string;
+      siteId?: string;
+      operationId?: string;
+    };
+
+    const newQuantity = Number(body.newQuantity);
+    const expectedCurrent = Number(body.expectedCurrentQuantity);
+
+    if (!Number.isFinite(newQuantity) || newQuantity < 0)
+      return reply.code(400).send({ error: "INVALID_NEW_QUANTITY" });
+
+    if (!Number.isFinite(expectedCurrent) || expectedCurrent < 0)
+      return reply.code(400).send({ error: "EXPECTED_CURRENT_QUANTITY_REQUIRED" });
+
+    if (!body.reasonCode)
+      return reply.code(400).send({ error: "REASON_CODE_REQUIRED" });
+
+    const cx = await db.connect();
+
+    try {
+      await cx.query("begin");
+
+      const rowResult = await cx.query(
+        `select
+            KEY,
+            CLIENT_ID,
+            SITE_ID,
+            SKU_ID,
+            LOCATION_ID,
+            QTY_ON_HAND
+           from core.INVENTORY
+          where KEY=$1
+            and CLIENT_ID=$2
+          for update`,
+        [inventoryKey, clientId],
+      );
+
+      if (!rowResult.rowCount) {
+        await cx.query("rollback");
+        return reply.code(404).send({ error: "INVENTORY_NOT_FOUND" });
+      }
+
+      const row = rowResult.rows[0];
+
+      if (body.siteId && row.site_id !== body.siteId) {
+        await cx.query("rollback");
+        return reply.code(409).send({ error: "INVENTORY_SITE_CHANGED" });
+      }
+
+      const allowed = await cx.query(
+        `select 1
+           from config.CLIENT_SITE
+          where CLIENT_ID=$1
+            and SITE_ID=$2
+            and ACTIVE=true`,
+        [clientId, row.site_id],
+      );
+
+      if (!allowed.rowCount) {
+        await cx.query("rollback");
+        return reply.code(403).send({ error: "SITE_NOT_AUTHORISED" });
+      }
+
+      const current = Number(row.qty_on_hand);
+
+      if (current !== expectedCurrent) {
+        await cx.query("rollback");
+        return reply.code(409).send({
+          error: "INVENTORY_COUNT_STALE",
+          expectedCurrentQuantity: expectedCurrent,
+          actualCurrentQuantity: current,
+        });
+      }
+
+      const delta = newQuantity - current;
+
+      if (delta !== 0) {
+        await cx.query(
+          `select api.ADJUST_INVENTORY(
+             $1,
+             $2,
+             $3,
+             $4,
+             $5,
+             $6
+           )`,
+          [
+            clientId,
+            row.key,
+            delta,
+            body.reasonCode,
+            body.note ?? null,
+            principal.email,
+          ],
+        );
+      }
+
+      await cx.query("commit");
+
+      return {
+        inventoryKey: row.key,
+        clientId,
+        siteId: row.site_id,
+        skuId: row.sku_id,
+        locationId: row.location_id,
+        previousQuantity: current,
+        newQuantity,
+        change: delta,
+        changed: delta !== 0,
+      };
+    } catch (error) {
+      try { await cx.query("rollback"); } catch {}
+      throw error;
+    } finally {
+      cx.release();
+    }
+  });
+
+app.post("/api/admin/inventory/:inventoryKey/move",async(req,reply)=>{
     try{
       const p=await requirePermission(req,clientId,"inventory.move");const {inventoryKey}=req.params as any;const b=(req.body??{}) as any;
       if(!b.toLocationId)throw new Error("LOCATION_REQUIRED");if(!b.reasonCode)throw new Error("REASON_CODE_REQUIRED");
@@ -263,7 +586,8 @@ export function registerAdminOperationsRoutes(app:FastifyInstance,clientId:strin
       const refundable=Number(x.captured_amount??x.amount)-Number(x.refunded_amount??0);
       const amount=b.amount==null?refundable:Number(b.amount);
       if(!Number.isFinite(amount)||amount<=0||amount>refundable)throw new Error("INVALID_REFUND_AMOUNT");
-      const idem=`admin-refund:${clientId}:${paymentId}:${crypto.randomUUID()}`;
+      const suppliedIdempotency=String(b.operationId??req.headers["idempotency-key"]??"").trim();
+       const idem=suppliedIdempotency||`admin-refund:${clientId}:${paymentId}:${crypto.randomUUID()}`;
       const ins=await c.query(`insert into core.PAYMENT_REFUND
        (CLIENT_ID,PAYMENT_ID,ORDER_ID,RETURN_CASE_ID,PROVIDER,PROVIDER_REFERENCE,IDEMPOTENCY_KEY,AMOUNT,CURRENCY,STATUS,REASON_CODE,NOTES,REQUESTED_BY)
        values($1,$2::uuid,$3,$4::uuid,$5,$6,$7,$8,$9,'REQUESTED',$10,$11,$12) returning *`,
@@ -293,22 +617,302 @@ export function registerAdminOperationsRoutes(app:FastifyInstance,clientId:strin
     }catch(e){return sendError(reply,e);}
   });
 
-  app.post("/api/admin/returns",async(req,reply)=>{
+  app.get("/api/admin/returns/:id",async(req,reply)=>{
     try{
-      const p=await requirePermission(req,clientId,"return.create");const b=(req.body??{}) as any;
-      if(!b.orderId)throw new Error("ORDER_ID_REQUIRED");if(!b.caseType)throw new Error("CASE_TYPE_REQUIRED");
-      const o=await db.query(`select ACCOUNT_ID,CUSTOMER_ID from core.ORDER_HEADER where CLIENT_ID=$1 and ORDER_ID=$2`,[clientId,b.orderId]);
-      if(!o.rowCount)throw new Error("ORDER_NOT_FOUND");
-      const num=`RC-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(2).toString("hex").toUpperCase()}`;
-      const r=await db.query(`insert into core.RETURN_CASE
-       (CLIENT_ID,CASE_NUMBER,ORDER_ID,ACCOUNT_ID,CUSTOMER_ID,CASE_TYPE,REASON_CODE,CUSTOMER_MESSAGE,INTERNAL_NOTES,REFUND_REQUESTED,CREATED_BY)
-       values($1,$2,$3,$4::uuid,$5,$6,$7,$8,$9,$10,$11) returning *`,
-       [clientId,num,b.orderId,o.rows[0].account_id,o.rows[0].customer_id,String(b.caseType).toUpperCase(),b.reasonCode??null,b.customerMessage??null,b.internalNotes??null,Number(b.refundRequested??0),actor(p)]);
-      await auditAdminChange(clientId,p,"RETURN_CASE",r.rows[0].return_case_id,"CREATE",null,r.rows[0]);
-      return reply.code(201).send(r.rows[0]);
+      await requirePermission(req,clientId,"return.read");
+      const {id}=req.params as any;
+
+      const [header,lines]=await Promise.all([
+        db.query(`select *
+          from core.RETURN_CASE
+          where CLIENT_ID=$1
+            and RETURN_CASE_ID=$2
+          limit 1`,[clientId,id]),
+        db.query(`select *
+          from core.RETURN_CASE_LINE
+          where CLIENT_ID=$1
+            and RETURN_CASE_ID=$2
+          order by LINE_ID,CREATED_DSTAMP`,[clientId,id])
+      ]);
+
+      if(!header.rowCount){
+        return reply.code(404).send({error:"RETURN_CASE_NOT_FOUND"});
+      }
+
+      return {case:header.rows[0],lines:lines.rows};
     }catch(e){return sendError(reply,e);}
   });
 
+  app.post("/api/admin/returns",async(req,reply)=>{
+    const c=await db.connect();
+    let transactionOpen=false;
+
+    try{
+      const p=await requirePermission(req,clientId,"return.create");
+      const b=(req.body??{}) as any;
+
+      const operationId=String(
+        b.operationId ?? req.headers["idempotency-key"] ?? ""
+      ).trim();
+
+      if(!operationId){
+        return reply.code(400).send({
+          error:"RETURN_OPERATION_ID_REQUIRED",
+          message:"A stable operationId or Idempotency-Key is required."
+        });
+      }
+
+      const orderId=String(b.orderId??"").trim();
+
+      if(!orderId){
+        return reply.code(400).send({error:"RETURN_ORDER_REQUIRED"});
+      }
+
+      if(!b.caseType)throw new Error("CASE_TYPE_REQUIRED");
+
+      const rawLines=Array.isArray(b.lines)?b.lines:[];
+
+      if(rawLines.length>100){
+        throw new Error("INVALID_RETURN_LINES");
+      }
+
+      const requestedLines=rawLines.map((x:any)=>({
+        lineId:Number(x?.lineId),
+        qty:Number(x?.qty),
+        issueType:String(x?.issueType??b.caseType??"").trim().toUpperCase(),
+        conditionCode:x?.conditionCode?String(x.conditionCode).trim().toUpperCase():null,
+        resolution:x?.resolution?String(x.resolution).trim().slice(0,40):null,
+        refundAmount:Number(x?.refundAmount??0),
+        notes:x?.notes?String(x.notes).trim():null
+      }));
+
+      for(const line of requestedLines){
+        if(!Number.isFinite(line.lineId)||line.lineId<=0){
+          throw new Error("INVALID_RETURN_LINE");
+        }
+        if(!Number.isFinite(line.qty)||line.qty<=0){
+          throw new Error("INVALID_RETURN_QTY");
+        }
+        if(!line.issueType){
+          throw new Error("RETURN_ISSUE_TYPE_REQUIRED");
+        }
+        if(!Number.isFinite(line.refundAmount)||line.refundAmount<0){
+          throw new Error("INVALID_RETURN_REFUND_AMOUNT");
+        }
+      }
+
+      const lineIds=requestedLines.map((x:any)=>x.lineId);
+
+      if(new Set(lineIds.map(String)).size!==lineIds.length){
+        throw new Error("INVALID_RETURN_DUPLICATE_LINE");
+      }
+
+      await c.query("begin");
+      transactionOpen=true;
+
+      const existing=await c.query(`select *
+        from core.RETURN_CASE
+        where CLIENT_ID=$1
+          and OPERATION_ID=$2
+        for update`,[clientId,operationId]);
+
+      if(existing.rowCount){
+        const prior=existing.rows[0];
+
+        if(String(prior.order_id)!==orderId){
+          throw new Error("RETURN_OPERATION_CONFLICT");
+        }
+
+        const priorLines=await c.query(`select *
+          from core.RETURN_CASE_LINE
+          where CLIENT_ID=$1
+            and RETURN_CASE_ID=$2
+          order by LINE_ID,CREATED_DSTAMP`,
+          [clientId,prior.return_case_id]);
+
+        await c.query("commit");
+        transactionOpen=false;
+
+        return reply.code(200).send({
+          ...prior,
+          lines:priorLines.rows,
+          replayed:true
+        });
+      }
+
+      const order=await c.query(`select ACCOUNT_ID,CUSTOMER_ID
+        from core.ORDER_HEADER
+        where CLIENT_ID=$1
+          and ORDER_ID=$2
+        for update`,[clientId,orderId]);
+
+      if(!order.rowCount){
+        throw new Error("RETURN_ORDER_NOT_FOUND");
+      }
+
+      const orderLines=new Map<string,any>();
+
+      if(lineIds.length){
+        const lockedLines=await c.query(`select LINE_ID,SKU_ID,QTY_ORDERED
+          from core.ORDER_LINE
+          where CLIENT_ID=$1
+            and ORDER_ID=$2
+            and LINE_ID=any($3::numeric[])
+          for update`,[clientId,orderId,lineIds]);
+
+        if(lockedLines.rowCount!==lineIds.length){
+          throw new Error("RETURN_ORDER_LINE_NOT_FOUND");
+        }
+
+        for(const row of lockedLines.rows){
+          orderLines.set(String(row.line_id),row);
+        }
+
+        const claimed=await c.query(`select
+            rcl.LINE_ID,
+            coalesce(sum(rcl.QTY),0)::numeric as QTY_CLAIMED
+          from core.RETURN_CASE_LINE rcl
+          join core.RETURN_CASE rc
+            on rc.CLIENT_ID=rcl.CLIENT_ID
+           and rc.RETURN_CASE_ID=rcl.RETURN_CASE_ID
+          where rcl.CLIENT_ID=$1
+            and rcl.ORDER_ID=$2
+            and rcl.LINE_ID=any($3::numeric[])
+            and rc.STATUS<>'REJECTED'
+          group by rcl.LINE_ID`,
+          [clientId,orderId,lineIds]);
+
+        const claimedByLine=new Map<string,number>();
+
+        for(const row of claimed.rows){
+          claimedByLine.set(String(row.line_id),Number(row.qty_claimed??0));
+        }
+
+        for(const line of requestedLines){
+          const source=orderLines.get(String(line.lineId));
+          const ordered=Number(source?.qty_ordered??0);
+          const already=claimedByLine.get(String(line.lineId))??0;
+
+          if(line.qty+already>ordered){
+            throw new Error("INVALID_RETURN_QTY_EXCEEDS_ORDERED");
+          }
+        }
+      }
+
+      const caseNumber=`RC-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(2).toString("hex").toUpperCase()}`;
+
+      const created=await c.query(`insert into core.RETURN_CASE
+        (CLIENT_ID,CASE_NUMBER,ORDER_ID,ACCOUNT_ID,CUSTOMER_ID,CASE_TYPE,
+         REASON_CODE,CUSTOMER_MESSAGE,INTERNAL_NOTES,REFUND_REQUESTED,
+         CREATED_BY,OPERATION_ID)
+        values($1,$2,$3,$4::uuid,$5,$6,$7,$8,$9,$10,$11,$12)
+        on conflict (CLIENT_ID,OPERATION_ID)
+        where OPERATION_ID is not null
+        do nothing
+        returning *`,[
+          clientId,
+          caseNumber,
+          orderId,
+          order.rows[0].account_id,
+          order.rows[0].customer_id,
+          String(b.caseType).toUpperCase(),
+          b.reasonCode??null,
+          b.customerMessage??null,
+          b.internalNotes??null,
+          Number(b.refundRequested??0),
+          actor(p),
+          operationId
+        ]);
+
+      if(!created.rowCount){
+        const raced=await c.query(`select *
+          from core.RETURN_CASE
+          where CLIENT_ID=$1
+            and OPERATION_ID=$2
+          limit 1`,[clientId,operationId]);
+
+        if(!raced.rowCount){
+          throw new Error("RETURN_IDEMPOTENCY_RACE");
+        }
+
+        const prior=raced.rows[0];
+
+        if(String(prior.order_id)!==orderId){
+          throw new Error("RETURN_OPERATION_CONFLICT");
+        }
+
+        const priorLines=await c.query(`select *
+          from core.RETURN_CASE_LINE
+          where CLIENT_ID=$1
+            and RETURN_CASE_ID=$2
+          order by LINE_ID,CREATED_DSTAMP`,
+          [clientId,prior.return_case_id]);
+
+        await c.query("commit");
+        transactionOpen=false;
+
+        return reply.code(200).send({
+          ...prior,
+          lines:priorLines.rows,
+          replayed:true
+        });
+      }
+
+      const result=created.rows[0];
+      const insertedLines:any[]=[];
+
+      for(const line of requestedLines){
+        const source=orderLines.get(String(line.lineId));
+
+        const inserted=await c.query(`insert into core.RETURN_CASE_LINE
+          (RETURN_CASE_ID,CLIENT_ID,ORDER_ID,LINE_ID,SKU_ID,QTY,ISSUE_TYPE,
+           CONDITION_CODE,RESOLUTION,REFUND_AMOUNT,NOTES)
+          values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+          returning *`,[
+            result.return_case_id,
+            clientId,
+            orderId,
+            line.lineId,
+            source?.sku_id??null,
+            line.qty,
+            line.issueType,
+            line.conditionCode,
+            line.resolution,
+            line.refundAmount,
+            line.notes
+          ]);
+
+        insertedLines.push(inserted.rows[0]);
+      }
+
+      await c.query("commit");
+      transactionOpen=false;
+
+      await auditAdminChange(
+        clientId,
+        p,
+        "RETURN_CASE",
+        result.return_case_id,
+        "CREATE",
+        null,
+        {...result,lines:insertedLines}
+      );
+
+      return reply.code(201).send({
+        ...result,
+        lines:insertedLines,
+        replayed:false
+      });
+
+    }catch(e){
+      if(transactionOpen){
+        try{await c.query("rollback")}catch{}
+      }
+      return sendError(reply,e);
+    }finally{
+      c.release();
+    }
+  });
   app.patch("/api/admin/returns/:id",async(req,reply)=>{
     try{
       const p=await requirePermission(req,clientId,"return.manage");const {id}=req.params as any;const b=(req.body??{}) as any;
@@ -447,12 +1051,44 @@ export function registerAdminOperationsRoutes(app:FastifyInstance,clientId:strin
     catch(e){return sendError(reply,e);}
   });
 
+  app.get("/api/admin/audit/meta",async(req,reply)=>{
+    try{
+      await requirePermission(req,clientId,"audit.read");
+      const [types,actions]=await Promise.all([
+        db.query(`select distinct ENTITY_TYPE from audit.AUDIT_EVENT where (CLIENT_ID=$1 or CLIENT_ID is null) and ENTITY_TYPE is not null order by ENTITY_TYPE`,[clientId]),
+        db.query(`select distinct ACTION from audit.AUDIT_EVENT where (CLIENT_ID=$1 or CLIENT_ID is null) and ACTION is not null order by ACTION`,[clientId])
+      ]);
+      return {
+        entityTypes:types.rows.map((r:any)=>r.entity_type),
+        actions:actions.rows.map((r:any)=>r.action)
+      };
+    }catch(e){return sendError(reply,e);}
+  });
+
   app.get("/api/admin/audit",async(req,reply)=>{
     try{
-      await requirePermission(req,clientId,"audit.read");const q=req.query as any;
-      const r=await db.query(`select * from audit.AUDIT_EVENT where (CLIENT_ID=$1 or CLIENT_ID is null)
-       and ($2::text is null or ENTITY_TYPE=$2) and ($3::text is null or ENTITY_ID=$3)
-       order by CREATED_DSTAMP desc limit $4`,[clientId,q.entityType?.toUpperCase()??null,q.entityId??null,lim(q.limit,100,500)]);return r.rows;
+      await requirePermission(req,clientId,"audit.read");
+      const q=req.query as any;
+      const entityType=q.entityType?String(q.entityType).toUpperCase():null;
+      const entityId=q.entityId?String(q.entityId).trim():null;
+      const action=q.action?String(q.action).toUpperCase():null;
+      const changedBy=q.changedBy?String(q.changedBy).trim():null;
+      const dateFrom=q.dateFrom?String(q.dateFrom):null;
+      const dateTo=q.dateTo?String(q.dateTo):null;
+      const limit=Math.min(lim(q.limit,100,250),250);
+      const offset=off(q.offset);
+      const r=await db.query(`select * from audit.AUDIT_EVENT
+       where (CLIENT_ID=$1 or CLIENT_ID is null)
+         and ($2::text is null or ENTITY_TYPE=$2)
+         and ($3::text is null or ENTITY_ID ilike '%' || $3 || '%')
+         and ($4::text is null or ACTION=$4)
+         and ($5::text is null or CHANGED_BY ilike '%' || $5 || '%')
+         and ($6::date is null or CREATED_DSTAMP >= $6::date)
+         and ($7::date is null or CREATED_DSTAMP < ($7::date + interval '1 day'))
+       order by CREATED_DSTAMP desc
+       limit $8 offset $9`,
+       [clientId,entityType,entityId,action,changedBy,dateFrom,dateTo,limit,offset]);
+      return r.rows;
     }catch(e){return sendError(reply,e);}
   });
 

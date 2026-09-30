@@ -27,7 +27,7 @@ function Field({label,children,help}:{label:string;children:ReactNode;help?:stri
 function ConfirmText({value,setValue,expected}:{value:string;setValue:(v:string)=>void;expected:string}){return <Field label={`Type ${expected} to confirm`}><input className="input" value={value} onChange={e=>setValue(e.target.value)} placeholder={expected}/></Field>}
 function Metric({label,value,tone=""}:{label:string;value:ReactNode;tone?:string}){return <div className={`cp-metric ${tone}`}><span>{label}</span><strong>{value}</strong></div>}
 function ReasonSelect({reasons,value,onChange}:{reasons:Obj[];value:string;onChange:(v:string)=>void}){return <select className="input" value={value} onChange={e=>onChange(e.target.value)}>{reasons.map((r,i)=><option key={txt(get(r,"reason_code","REASON_CODE"),String(i))} value={txt(get(r,"reason_code","REASON_CODE"))}>{txt(get(r,"description","DESCRIPTION", "reason_code","REASON_CODE"))}</option>)}</select>}
-function toneForStatus(v:unknown){const s=txt(v,"").toUpperCase();if(["PAID","READY","SHIPPED","DELIVERED","COMPLETE","COMPLETED","RESOLVED","CLOSED","SUBMITTED","REQUEUED","ACTIVE"].includes(s))return"good";if(["FAILED","ERROR","CANCELLED","REJECTED"].includes(s))return"bad";if(["PENDING","OPEN","STARTED","PART_ALLOCATED","PART_REFUNDED","HOLD","REQUESTED"].includes(s))return"warn";return""}
+function toneForStatus(v:unknown){const s=txt(v,"").toUpperCase();if(["PAID","READY","SHIPPED","DELIVERED","COMPLETE","COMPLETED","RESOLVED","CLOSED","SUBMITTED","REQUEUED","ACTIVE"].includes(s))return"good";if(["FAILED","ERROR","CANCELLED","REJECTED"].includes(s))return"bad";if(["PENDING","OPEN","STARTED","PART_ALLOCATED","PART_REFUNDED","HOLD","AWAITING_CUSTOMER","REQUESTED"].includes(s))return"warn";return""}
 function statusPill(v:unknown){const s=txt(v);return <Pill tone={toneForStatus(s)}>{s.replaceAll("_"," ")}</Pill>}
 
 function urlParam(name:string){return new URLSearchParams(window.location.search).get(name)??""}
@@ -45,16 +45,146 @@ export function PaymentsPage({token,has}:{token:Token;has:HasPermission}){const[
 function PaymentModal({token,payment,canRefund,onClose,onChanged}:{token:Token;payment:Obj;canRefund:boolean;onClose:()=>void;onChanged:()=>void}){const paymentId=txt(get(payment,"payment_id","PAYMENT_ID"));const refundable=refundableBalance(payment);const[refund,setRefund]=useState(false);return <Modal title={`Payment ${paymentId}`} onClose={onClose}><dl>{Object.entries(payment).map(([k,v])=><div key={k}><dt>{k.replaceAll("_"," ")}</dt><dd>{typeof v==="object"?JSON.stringify(v):txt(v)}</dd></div>)}</dl><div className="dangerzone"><div><strong>Refund</strong><span>Maximum currently refundable: {money(refundable,txt(get(payment,"currency","CURRENCY"),"GBP"))}.</span></div><Button kind="danger" disabled={!canRefund||refundable<=0} onClick={()=>setRefund(true)}>Refund payment</Button></div>{refund&&<RefundModal token={token} payment={payment} onClose={()=>setRefund(false)} onDone={onChanged}/>}</Modal>}
 function RefundModal({token,payment,onClose,onDone}:{token:Token;payment:Obj;onClose:()=>void;onDone:()=>void}){const[operationId]=useState(()=>newOperationId("refund"));const paymentId=txt(get(payment,"payment_id","PAYMENT_ID")),currency=txt(get(payment,"currency","CURRENCY"),"GBP"),max=refundableBalance(payment);const[reasons,setReasons]=useState<Obj[]>([]),[reason,setReason]=useState(""),[amount,setAmount]=useState(String(max)),[notes,setNotes]=useState(""),[confirm,setConfirm]=useState(""),[error,setError]=useState<unknown>(null),[saving,setSaving]=useState(false);useEffect(()=>{loadReasons(token,"REFUND").then(r=>{setReasons(r);setReason(txt(get(r[0],"reason_code","REASON_CODE"),""))}).catch(setError)},[token]);async function save(){setSaving(true);try{await api(token,`/api/admin/payments/${paymentId}/refund`,{method:"POST",body:JSON.stringify({amount:Number(amount),reasonCode:reason,notes,operationId})});onDone()}catch(e){setError(e)}finally{setSaving(false)}}return <div className="nested-confirm"><h3>Refund payment</h3><div className="form"><Field label={`Amount (${currency})`}><input className="input" type="number" min="0.01" max={max} step="0.01" value={amount} onChange={e=>setAmount(e.target.value)}/></Field><Field label="Reason"><ReasonSelect reasons={reasons} value={reason} onChange={setReason}/></Field><Field label="Notes"><textarea className="input textarea" value={notes} onChange={e=>setNotes(e.target.value)}/></Field><ConfirmText value={confirm} setValue={setConfirm} expected={paymentId}/>{error?<ErrorBox error={error}/>:null}<div className="actions"><Button kind="ghost" onClick={onClose}>Cancel</Button><Button kind="danger" disabled={saving||confirm!==paymentId||!reason||Number(amount)<=0||Number(amount)>max} onClick={()=>void save()}>{saving?"Submitting...":`Refund ${money(Number(amount)||0,currency)}`}</Button></div></div></div>}
 
-export function ReturnsPage({token,has}:{token:Token;has:HasPermission}){const[rows,setRows]=useState<Obj[]>([]),[status,setStatus]=useState(""),[orderId,setOrderId]=useState(""),[selected,setSelected]=useState<Obj|null>(null),[creating,setCreating]=useState(false),[loading,setLoading]=useState(true),[error,setError]=useState<unknown>(null),[nonce,setNonce]=useState(0);useEffect(()=>{let live=true;setLoading(true);api<Obj[]>(token,"/api/admin/returns"+query({status:status||undefined,orderId:orderId||undefined,limit:250})).then(x=>live&&setRows(x)).catch(e=>live&&setError(e)).finally(()=>live&&setLoading(false));return()=>{live=false}},[token,status,orderId,nonce]);const cols=[{name:"Case",cell:(r:Obj)=><><strong>{txt(get(r,"case_number","CASE_NUMBER"))}</strong><small>{txt(get(r,"return_case_id","RETURN_CASE_ID"))}</small></>},{name:"Order",cell:(r:Obj)=>{const id=txt(get(r,"order_id","ORDER_ID"));return id?<a href={orderHref(id)}>{id}</a>:"-"}},{name:"Type",cell:(r:Obj)=>txt(get(r,"case_type","CASE_TYPE"))},{name:"Status",cell:(r:Obj)=>statusPill(get(r,"status","STATUS"))},{name:"Requested",cell:(r:Obj)=>money(get(r,"refund_requested","REFUND_REQUESTED"))},{name:"Approved",cell:(r:Obj)=>money(get(r,"refund_approved","REFUND_APPROVED"))},{name:"Created",cell:(r:Obj)=>dt(get(r,"created_dstamp","CREATED_DSTAMP"))}];return <><Header title="Returns & claims" sub="DOA, damage, wrong-item and customer-return cases. Refund approval is tracked separately from the Stripe refund action." action={has("return.create")?<Button onClick={()=>setCreating(true)}>New case</Button>:undefined}/><Card><div className="toolbar cp-filters"><input className="input cp-filter" value={orderId} onChange={e=>setOrderId(e.target.value)} placeholder="Order ID"/><select className="input cp-filter" value={status} onChange={e=>setStatus(e.target.value)}><option value="">All statuses</option><option>OPEN</option><option>INVESTIGATING</option><option>APPROVED</option><option>RESOLVED</option><option>CLOSED</option><option>REJECTED</option></select><span>{rows.length} cases</span></div>{error?<ErrorBox error={error}/>:loading?<Load/>:<Table rows={rows} cols={cols} keyOf={(r,i)=>txt(get(r,"return_case_id","RETURN_CASE_ID"),String(i))} onClick={setSelected}/>}</Card>{creating&&<CreateReturnModal token={token} onClose={()=>setCreating(false)} onDone={()=>{setCreating(false);setNonce(x=>x+1)}}/>}{selected&&<ManageReturnModal token={token} item={selected} canManage={has("return.manage")} onClose={()=>setSelected(null)} onDone={()=>{setSelected(null);setNonce(x=>x+1)}}/>}</>}
-function CreateReturnModal({token,onClose,onDone}:{token:Token;onClose:()=>void;onDone:()=>void}){
+export function ReturnsPage({token,has}:{token:Token;has:HasPermission}){
+  const[rows,setRows]=useState<Obj[]>([]);
+  const[status,setStatus]=useState("");
+  const[orderId,setOrderId]=useState("");
+  const[selected,setSelected]=useState<Obj|null>(null);
+  const[creating,setCreating]=useState(false);
+  const[createOrder,setCreateOrder]=useState<Obj|null>(null);
+  const[loading,setLoading]=useState(true);
+  const[error,setError]=useState<unknown>(null);
+  const[nonce,setNonce]=useState(0);
+  const[orderSearch,setOrderSearch]=useState("");
+  const[orderMatches,setOrderMatches]=useState<Obj[]>([]);
+  const[orderSearching,setOrderSearching]=useState(false);
+
+  useEffect(()=>{
+    let live=true;
+    setLoading(true);
+    setError(null);
+    api<Obj[]>(token,"/api/admin/returns"+query({status:status||undefined,orderId:orderId||undefined,limit:250}))
+      .then(x=>live&&setRows(x))
+      .catch(e=>live&&setError(e))
+      .finally(()=>live&&setLoading(false));
+    return()=>{live=false};
+  },[token,status,orderId,nonce]);
+
+  useEffect(()=>{
+    const q=orderSearch.trim();
+    if(q.length<2){setOrderMatches([]);setOrderSearching(false);return;}
+    const timer=window.setTimeout(()=>{
+      setOrderSearching(true);
+      setError(null);
+      api(token,`/api/admin/orders?q=${encodeURIComponent(q)}&limit=20`)
+        .then(r=>setOrderMatches(items(r)))
+        .catch(setError)
+        .finally(()=>setOrderSearching(false));
+    },250);
+    return()=>window.clearTimeout(timer);
+  },[token,orderSearch]);
+
+  const openCreate=(order:Obj|null)=>{
+    setCreateOrder(order);
+    setCreating(true);
+  };
+
+  const cols=[
+    {name:"Case",cell:(r:Obj)=><><strong>{txt(get(r,"case_number","CASE_NUMBER"))}</strong><small>{txt(get(r,"return_case_id","RETURN_CASE_ID"))}</small></>},
+    {name:"Order",cell:(r:Obj)=>{const id=txt(get(r,"order_id","ORDER_ID"));return id?<a href={orderHref(id)}>{id}</a>:"-"}},
+    {name:"Type",cell:(r:Obj)=>txt(get(r,"case_type","CASE_TYPE"))},
+    {name:"Status",cell:(r:Obj)=>statusPill(get(r,"status","STATUS"))},
+    {name:"Requested",cell:(r:Obj)=>money(get(r,"refund_requested","REFUND_REQUESTED"))},
+    {name:"Approved",cell:(r:Obj)=>money(get(r,"refund_approved","REFUND_APPROVED"))},
+    {name:"Created",cell:(r:Obj)=>dt(get(r,"created_dstamp","CREATED_DSTAMP"))}
+  ];
+
+  return <>
+    <Header
+      title="Returns & claims"
+      sub="Find the outbound order first, create the return or claim, then track the case through resolution."
+      action={has("return.create")?<Button onClick={()=>openCreate(null)}>New case</Button>:undefined}
+    />
+
+    {has("return.create")?<Card>
+      <h2>Find outbound order</h2>
+      <p className="cp-muted">Search the existing outbound order before opening a return or claim.</p>
+      <div className="toolbar cp-filters">
+        <input
+          className="input cp-filter"
+          value={orderSearch}
+          onChange={e=>setOrderSearch(e.target.value)}
+          placeholder="Order ID, customer ID or email"
+        />
+        <span>{orderSearching?"Searching...":orderMatches.length?`${orderMatches.length} matching orders`:""}</span>
+      </div>
+
+      {orderMatches.length>0?<div className="tablewrap">
+        <table>
+          <thead><tr><th>Order</th><th>Customer</th><th>Payment</th><th>Fulfilment</th><th/></tr></thead>
+          <tbody>{orderMatches.map((o,i)=>{
+            const id=txt(get(o,"order_id","ORDER_ID"),String(i));
+            const customer=txt(get(o,"customer_name","CUSTOMER_NAME","customer_id","CUSTOMER_ID","contact_email","CONTACT_EMAIL","customer_email","CUSTOMER_EMAIL"),"-");
+            const payment=txt(get(o,"payment_status","PAYMENT_STATUS"),"-");
+            const fulfilment=txt(get(o,"fulfilment_status","FULFILMENT_STATUS","status","STATUS"),"-");
+            return <tr key={id}>
+              <td><a href={orderHref(id)}>{id}</a></td>
+              <td>{customer}</td>
+              <td>{statusPill(payment)}</td>
+              <td>{statusPill(fulfilment)}</td>
+              <td><Button onClick={()=>openCreate(o)}>Create return / claim</Button></td>
+            </tr>;
+          })}</tbody>
+        </table>
+      </div>:orderSearch.trim().length>=2&&!orderSearching?<Empty>No matching outbound orders.</Empty>:null}
+    </Card>:null}
+
+    <Card>
+      <h2>Existing cases</h2>
+      <div className="toolbar cp-filters">
+        <input className="input cp-filter" value={orderId} onChange={e=>setOrderId(e.target.value)} placeholder="Order ID"/>
+        <select className="input cp-filter" value={status} onChange={e=>setStatus(e.target.value)}>
+          <option value="">All statuses</option>
+          <option>OPEN</option>
+          <option>INVESTIGATING</option><option>AWAITING_CUSTOMER</option><option>APPROVED</option>
+          <option>RESOLVED</option>
+          <option>CLOSED</option>
+          <option>REJECTED</option>
+        </select>
+        <span>{rows.length} cases</span>
+      </div>
+      {error?<ErrorBox error={error}/>:loading?<Load/>:<Table rows={rows} cols={cols} keyOf={(r,i)=>txt(get(r,"return_case_id","RETURN_CASE_ID"),String(i))} onClick={setSelected}/ >}
+    </Card>
+
+    {creating&&<CreateReturnModal
+      token={token}
+      initialOrder={createOrder}
+      onClose={()=>{setCreating(false);setCreateOrder(null)}}
+      onDone={()=>{setCreating(false);setCreateOrder(null);setNonce(x=>x+1)}}
+    />}
+
+    {selected&&<ManageReturnModal
+      token={token}
+      item={selected}
+      canManage={has("return.manage")}
+      onClose={()=>setSelected(null)}
+      onDone={()=>{setSelected(null);setNonce(x=>x+1)}}
+    />}
+  </>;
+}
+function CreateReturnModal({token,initialOrder,onClose,onDone}:{token:Token;initialOrder?:Obj|null;onClose:()=>void;onDone:()=>void}){
   const[operationId]=useState(()=>newOperationId("return"));
   const[reasons,setReasons]=useState<Obj[]>([]);
-  const[orderQuery,setOrderQuery]=useState("");
+  const[orderQuery,setOrderQuery]=useState(()=>txt(initialOrder&&get(initialOrder,"order_id","ORDER_ID"),""));
   const[orders,setOrders]=useState<Obj[]>([]);
-  const[selectedOrder,setSelectedOrder]=useState<Obj|null>(null);
+  const[selectedOrder,setSelectedOrder]=useState<Obj|null>(initialOrder??null);
+  const[orderLines,setOrderLines]=useState<Obj[]>([]);
+  const[lineQty,setLineQty]=useState<Record<string,string>>({});
   const[searching,setSearching]=useState(false);
+  const[loadingOrder,setLoadingOrder]=useState(false);
   const[caseType,setCaseType]=useState("DOA");
   const[reason,setReason]=useState("");
+  const[expectedResolution,setExpectedResolution]=useState("");
   const[customerMessage,setCustomerMessage]=useState("");
   const[internalNotes,setInternalNotes]=useState("");
   const[refund,setRefund]=useState("0");
@@ -62,12 +192,24 @@ function CreateReturnModal({token,onClose,onDone}:{token:Token;onClose:()=>void;
   const[saving,setSaving]=useState(false);
 
   useEffect(()=>{
-    loadReasons(token,"RETURN").then(r=>{setReasons(r);setReason(txt(get(r[0],"reason_code","REASON_CODE"),""))}).catch(setError)
+    loadReasons(token,"RETURN")
+      .then(r=>{
+        setReasons(r);
+        setReason(txt(get(r[0],"reason_code","REASON_CODE"),""));
+      })
+      .catch(setError);
   },[token]);
 
   useEffect(()=>{
     const q=orderQuery.trim();
-    if(q.length<2){setOrders([]);return}
+    const selectedId=txt(selectedOrder&&get(selectedOrder,"order_id","ORDER_ID"),"");
+
+    if(q.length<2||selectedId===q){
+      setOrders([]);
+      setSearching(false);
+      return;
+    }
+
     const timer=window.setTimeout(()=>{
       setSearching(true);
       api(token,`/api/admin/orders?q=${encodeURIComponent(q)}&limit=20`)
@@ -75,55 +217,339 @@ function CreateReturnModal({token,onClose,onDone}:{token:Token;onClose:()=>void;
         .catch(setError)
         .finally(()=>setSearching(false));
     },250);
-    return()=>window.clearTimeout(timer);
-  },[token,orderQuery]);
 
-  const orderId=txt(selectedOrder&&get(selectedOrder,"order_id","ORDER_ID"),"");
+    return()=>window.clearTimeout(timer);
+  },[token,orderQuery,selectedOrder]);
+
+  const selectedOrderId=txt(selectedOrder&&get(selectedOrder,"order_id","ORDER_ID"),"");
+
+  useEffect(()=>{
+    if(!selectedOrderId){
+      setOrderLines([]);
+      setLineQty({});
+      return;
+    }
+
+    let live=true;
+    setLoadingOrder(true);
+    setError(null);
+    setLineQty({});
+
+    api<Obj>(token,`/api/admin/orders/${encodeURIComponent(selectedOrderId)}`)
+      .then(detail=>{
+        if(!live)return;
+        setOrderLines((get(detail,"lines","LINES") as Obj[])||[]);
+      })
+      .catch(e=>live&&setError(e))
+      .finally(()=>live&&setLoadingOrder(false));
+
+    return()=>{live=false};
+  },[token,selectedOrderId]);
+
+  const selectedLines=orderLines.map(line=>{
+    const lineId=Number(get(line,"line_id","LINE_ID"));
+    const key=String(lineId);
+    const qty=Number(lineQty[key]??0);
+    const ordered=num(get(line,"qty_ordered","QTY_ORDERED"));
+
+    return {
+      line,
+      lineId,
+      qty,
+      ordered,
+      issueType:caseType,
+      resolution:expectedResolution||undefined
+    };
+  }).filter(x=>Number.isFinite(x.qty)&&x.qty>0);
+
+  const invalidQty=selectedLines.some(x=>x.qty>x.ordered);
 
   async function save(){
-    if(!orderId)return;
+    if(!selectedOrderId||!selectedLines.length||invalidQty)return;
+
     setSaving(true);
+    setError(null);
+
     try{
       await api(token,"/api/admin/returns",{
         method:"POST",
         body:JSON.stringify({
-          orderId,
+          orderId:selectedOrderId,
           caseType,
           reasonCode:reason||undefined,
           customerMessage,
           internalNotes,
           refundRequested:Number(refund)||0,
-          operationId
+          operationId,
+          lines:selectedLines.map(x=>({
+            lineId:x.lineId,
+            qty:x.qty,
+            issueType:x.issueType,
+            resolution:x.resolution
+          }))
         })
       });
+
       onDone();
-    }catch(e){setError(e)}finally{setSaving(false)}
+    }catch(e){
+      setError(e);
+    }finally{
+      setSaving(false);
+    }
   }
 
-  return <Modal title="New return / claim" onClose={onClose}><div className="form">
-    <Field label="Find order">
-      <input className="input" value={orderQuery} onChange={e=>{setOrderQuery(e.target.value);setSelectedOrder(null)}} placeholder="Search order, customer or reference"/>
-    </Field>
-    {searching?<small>Searching orders...</small>:null}
-    {!selectedOrder&&orders.length>0?<div className="card" style={{maxHeight:220,overflow:"auto"}}>{orders.map((o,i)=>{
-      const id=txt(get(o,"order_id","ORDER_ID"));
-      const customer=txt(get(o,"customer_name","CUSTOMER_NAME","customer_email","CUSTOMER_EMAIL"),"-");
-      const status=txt(get(o,"status","STATUS"),"-");
-      return <button key={id||String(i)} type="button" className="btn btn-ghost" style={{display:"block",width:"100%",textAlign:"left",marginBottom:4}} onClick={()=>{setSelectedOrder(o);setOrderQuery(id)}}><strong>{id}</strong> Ã‚Â· {customer} Ã‚Â· {status}</button>
-    })}</div>:null}
-    {selectedOrder?<div className="card"><strong>Selected order: <a href={orderHref(orderId)}>{orderId}</a></strong><br/><small>{txt(get(selectedOrder,"customer_name","CUSTOMER_NAME","customer_email","CUSTOMER_EMAIL"),"Customer details unavailable")} Ã‚Â· {txt(get(selectedOrder,"status","STATUS"),"")}</small></div>:null}
-    <Field label="Case type"><select className="input" value={caseType} onChange={e=>setCaseType(e.target.value)}><option>DOA</option><option>DAMAGED</option><option>WRONG_ITEM</option><option>CUSTOMER_RETURN</option></select></Field>
-    <Field label="Reason"><ReasonSelect reasons={reasons} value={reason} onChange={setReason}/></Field>
-    <Field label="Customer message"><textarea className="input textarea" value={customerMessage} onChange={e=>setCustomerMessage(e.target.value)}/></Field>
-    <Field label="Internal notes"><textarea className="input textarea" value={internalNotes} onChange={e=>setInternalNotes(e.target.value)}/></Field>
-    <Field label="Refund requested"><input className="input" type="number" step="0.01" min="0" value={refund} onChange={e=>setRefund(e.target.value)}/></Field>
-    {error?<ErrorBox error={error}/>:null}
-    <div className="actions"><Button kind="ghost" onClick={onClose}>Cancel</Button><Button disabled={saving||!selectedOrder||!caseType} onClick={()=>void save()}>{saving?"Creating...":"Create case"}</Button></div>
-  </div></Modal>
+  return <Modal title="New return / claim" onClose={onClose} wide>
+    <div className="form">
+      <Field label="Find outbound order">
+        <input
+          className="input"
+          value={orderQuery}
+          onChange={e=>{
+            setOrderQuery(e.target.value);
+            setSelectedOrder(null);
+          }}
+          placeholder="Order ID, customer ID or email"
+        />
+      </Field>
+
+      {searching?<small>Searching orders...</small>:null}
+
+      {!selectedOrder&&orders.length>0?<div className="card" style={{maxHeight:220,overflow:"auto"}}>
+        {orders.map((o,i)=>{
+          const id=txt(get(o,"order_id","ORDER_ID"));
+          const customer=txt(get(o,"customer_name","CUSTOMER_NAME","customer_id","CUSTOMER_ID","customer_email","CUSTOMER_EMAIL","contact_email","CONTACT_EMAIL"),"-");
+          const payment=txt(get(o,"payment_status","PAYMENT_STATUS"),"-");
+          const fulfilment=txt(get(o,"fulfilment_status","FULFILMENT_STATUS","status","STATUS"),"-");
+
+          return <button
+            key={id||String(i)}
+            type="button"
+            className="btn btn-ghost"
+            style={{display:"block",width:"100%",textAlign:"left",marginBottom:4}}
+            onClick={()=>{
+              setSelectedOrder(o);
+              setOrderQuery(id);
+            }}
+          >
+            <strong>{id}</strong> - {customer} - {payment} - {fulfilment}
+          </button>;
+        })}
+      </div>:null}
+
+      {selectedOrder?<div className="card">
+        <strong>Selected order: <a href={orderHref(selectedOrderId)}>{selectedOrderId}</a></strong>
+        <br/>
+        <small>
+          {txt(get(selectedOrder,"customer_name","CUSTOMER_NAME","customer_id","CUSTOMER_ID","customer_email","CUSTOMER_EMAIL","contact_email","CONTACT_EMAIL"),"Customer details unavailable")}
+          {" - Payment: "}{txt(get(selectedOrder,"payment_status","PAYMENT_STATUS"),"-")}
+          {" - Fulfilment: "}{txt(get(selectedOrder,"fulfilment_status","FULFILMENT_STATUS","status","STATUS"),"-")}
+        </small>
+      </div>:null}
+
+      {loadingOrder?<Load/>:selectedOrder&&orderLines.length===0?<Empty>No order lines found.</Empty>:null}
+
+      {orderLines.length>0?<div>
+        <h3>Choose items and quantities</h3>
+        <div className="tablewrap">
+          <table>
+            <thead>
+              <tr><th>Line</th><th>SKU</th><th>Ordered</th><th>Return / claim qty</th></tr>
+            </thead>
+            <tbody>{orderLines.map((line,i)=>{
+              const lineId=txt(get(line,"line_id","LINE_ID"),String(i));
+              const sku=txt(get(line,"sku_id","SKU_ID"),"-");
+              const ordered=num(get(line,"qty_ordered","QTY_ORDERED"));
+              const value=lineQty[lineId]??"0";
+              const qty=Number(value);
+              const invalid=Number.isFinite(qty)&&qty>ordered;
+
+              return <tr key={lineId}>
+                <td>{lineId}</td>
+                <td><strong>{sku}</strong></td>
+                <td>{ordered}</td>
+                <td>
+                  <input
+                    className="input"
+                    type="number"
+                    min="0"
+                    max={ordered}
+                    step="1"
+                    aria-label={`Qty for ${sku}`}
+                    value={value}
+                    onChange={e=>setLineQty(q=>({...q,[lineId]:e.target.value}))}
+                  />
+                  {invalid?<small>Cannot exceed ordered quantity.</small>:null}
+                </td>
+              </tr>;
+            })}</tbody>
+          </table>
+        </div>
+      </div>:null}
+
+      <Field label="Case type">
+        <select className="input" value={caseType} onChange={e=>setCaseType(e.target.value)}>
+          <option>DOA</option>
+          <option>DAMAGED</option>
+          <option>WRONG_ITEM</option>
+          <option>CUSTOMER_RETURN</option>
+        </select>
+      </Field>
+
+      <Field label="Reason">
+        <ReasonSelect reasons={reasons} value={reason} onChange={setReason}/>
+      </Field>
+
+      <Field label="Expected resolution" help="Optional expected outcome recorded against the selected return lines.">
+        <input className="input" aria-label="Expected resolution" maxLength={40} value={expectedResolution}
+          onChange={e=>setExpectedResolution(e.target.value)}
+          placeholder="Refund, replacement, investigate..."
+        />
+      </Field>
+
+      <Field label="Customer message">
+        <textarea className="input textarea" value={customerMessage} onChange={e=>setCustomerMessage(e.target.value)}/>
+      </Field>
+
+      <Field label="Internal notes">
+        <textarea className="input textarea" value={internalNotes} onChange={e=>setInternalNotes(e.target.value)}/>
+      </Field>
+
+      <Field label="Refund requested">
+        <input className="input" type="number" step="0.01" min="0" value={refund} onChange={e=>setRefund(e.target.value)}/>
+      </Field>
+
+      {selectedOrder&&orderLines.length>0&&selectedLines.length===0?<small>Select at least one item by entering a quantity above zero.</small>:null}
+
+      {error?<ErrorBox error={error}/>:null}
+
+      <div className="actions">
+        <Button kind="ghost" onClick={onClose}>Cancel</Button>
+        <Button
+          disabled={saving||!selectedOrder||!caseType||!selectedLines.length||invalidQty}
+          onClick={()=>void save()}
+        >
+          {saving?"Creating...":"Create case"}
+        </Button>
+      </div>
+    </div>
+  </Modal>;
 }
+function ManageReturnModal({token,item,canManage,onClose,onDone}:{token:Token;item:Obj;canManage:boolean;onClose:()=>void;onDone:()=>void}){
+  const id=txt(get(item,"return_case_id","RETURN_CASE_ID"));
+  const[detail,setDetail]=useState<Obj|null>(null);
+  const[detailLoading,setDetailLoading]=useState(true);
+  const[status,setStatus]=useState(txt(get(item,"status","STATUS"),"OPEN"));
+  const[resolution,setResolution]=useState(txt(get(item,"resolution","RESOLUTION"),""));
+  const[assignedTo,setAssignedTo]=useState(txt(get(item,"assigned_to","ASSIGNED_TO"),""));
+  const[notes,setNotes]=useState(txt(get(item,"internal_notes","INTERNAL_NOTES"),""));
+  const[approved,setApproved]=useState(txt(get(item,"refund_approved","REFUND_APPROVED"),""));
+  const[replacement,setReplacement]=useState(txt(get(item,"replacement_order_id","REPLACEMENT_ORDER_ID"),""));
+  const[error,setError]=useState<unknown>(null);
+  const[saving,setSaving]=useState(false);
 
-function ManageReturnModal({token,item,canManage,onClose,onDone}:{token:Token;item:Obj;canManage:boolean;onClose:()=>void;onDone:()=>void}){const id=txt(get(item,"return_case_id","RETURN_CASE_ID"));const[status,setStatus]=useState(txt(get(item,"status","STATUS"),"OPEN")),[resolution,setResolution]=useState(txt(get(item,"resolution","RESOLUTION"),"")),[assignedTo,setAssignedTo]=useState(txt(get(item,"assigned_to","ASSIGNED_TO"),"")),[notes,setNotes]=useState(txt(get(item,"internal_notes","INTERNAL_NOTES"),"")),[approved,setApproved]=useState(txt(get(item,"refund_approved","REFUND_APPROVED"),"")),[replacement,setReplacement]=useState(txt(get(item,"replacement_order_id","REPLACEMENT_ORDER_ID"),"")),[error,setError]=useState<unknown>(null),[saving,setSaving]=useState(false);async function save(){setSaving(true);try{await api(token,`/api/admin/returns/${id}`,{method:"PATCH",body:JSON.stringify({status,resolution:resolution||undefined,assignedTo:assignedTo||undefined,internalNotes:notes||undefined,refundApproved:approved===""?undefined:Number(approved),replacementOrderId:replacement||undefined})});onDone()}catch(e){setError(e)}finally{setSaving(false)}}return <Modal title={`Return ${txt(get(item,"case_number","CASE_NUMBER"),id)}`} onClose={onClose}><dl>{Object.entries(item).filter(([k])=>!["internal_notes","INTERNAL_NOTES","resolution","RESOLUTION","status","STATUS"].includes(k)).map(([k,v])=><div key={k}><dt>{k.replaceAll("_"," ")}</dt><dd>{txt(v)}</dd></div>)}</dl>{canManage&&<div className="form cp-top-gap"><Field label="Status"><select className="input" value={status} onChange={e=>setStatus(e.target.value)}><option>OPEN</option><option>INVESTIGATING</option><option>APPROVED</option><option>RESOLVED</option><option>CLOSED</option><option>REJECTED</option></select></Field><Field label="Resolution"><textarea className="input textarea" value={resolution} onChange={e=>setResolution(e.target.value)}/></Field><Field label="Assigned to"><input className="input" value={assignedTo} onChange={e=>setAssignedTo(e.target.value)}/></Field><Field label="Internal notes"><textarea className="input textarea" value={notes} onChange={e=>setNotes(e.target.value)}/></Field><Field label="Refund approved"><input className="input" type="number" min="0" step="0.01" value={approved} onChange={e=>setApproved(e.target.value)}/></Field><Field label="Replacement order ID"><input className="input" value={replacement} onChange={e=>setReplacement(e.target.value)}/></Field>{error?<ErrorBox error={error}/>:null}<div className="actions"><Button disabled={saving} onClick={()=>void save()}>{saving?"Saving...":"Save case"}</Button></div></div>}</Modal>}
+  useEffect(()=>{
+    let live=true;
+    setDetailLoading(true);
 
+    api<Obj>(token,`/api/admin/returns/${encodeURIComponent(id)}`)
+      .then(x=>live&&setDetail(x))
+      .catch(e=>live&&setError(e))
+      .finally(()=>live&&setDetailLoading(false));
+
+    return()=>{live=false};
+  },[token,id]);
+
+  const current=(get(detail??{},"case","CASE") as Obj)||item;
+  const lines=(get(detail??{},"lines","LINES") as Obj[])||[];
+
+  async function save(){
+    setSaving(true);
+    setError(null);
+
+    try{
+      await api(token,`/api/admin/returns/${id}`,{
+        method:"PATCH",
+        body:JSON.stringify({
+          status,
+          resolution:resolution||undefined,
+          assignedTo:assignedTo||undefined,
+          internalNotes:notes||undefined,
+          refundApproved:approved===""?undefined:Number(approved),
+          replacementOrderId:replacement||undefined
+        })
+      });
+
+      onDone();
+    }catch(e){
+      setError(e);
+    }finally{
+      setSaving(false);
+    }
+  }
+
+  return <Modal title={`Return ${txt(get(current,"case_number","CASE_NUMBER"),id)}`} onClose={onClose} wide>
+    <dl>
+      {Object.entries(current)
+        .filter(([k])=>!["internal_notes","INTERNAL_NOTES","resolution","RESOLUTION","status","STATUS"].includes(k))
+        .map(([k,v])=><div key={k}><dt>{k.replaceAll("_"," ")}</dt><dd>{txt(v)}</dd></div>)}
+    </dl>
+
+    <h3 className="detail-heading">Items</h3>
+
+    {detailLoading?<Load/>:lines.length?<div className="tablewrap">
+      <table>
+        <thead><tr><th>Line</th><th>SKU</th><th>Qty</th><th>Issue</th><th>Expected resolution</th></tr></thead>
+        <tbody>{lines.map((line,i)=><tr key={txt(get(line,"return_case_line_id","RETURN_CASE_LINE_ID"),String(i))}>
+          <td>{txt(get(line,"line_id","LINE_ID"),"-")}</td>
+          <td>{txt(get(line,"sku_id","SKU_ID"),"-")}</td>
+          <td>{txt(get(line,"qty","QTY"),"-")}</td>
+          <td>{txt(get(line,"issue_type","ISSUE_TYPE"),"-")}</td>
+          <td>{txt(get(line,"resolution","RESOLUTION"),"-")}</td>
+        </tr>)}</tbody>
+      </table>
+    </div>:<Empty>No item-level lines are recorded for this case.</Empty>}
+
+    {canManage?<div className="form cp-top-gap">
+      <Field label="Status">
+        <select className="input" value={status} onChange={e=>setStatus(e.target.value)}>
+          <option>OPEN</option>
+          <option>INVESTIGATING</option>
+          <option>AWAITING_CUSTOMER</option>
+          <option>APPROVED</option>
+          <option>RESOLVED</option>
+          <option>CLOSED</option>
+          <option>REJECTED</option>
+        </select>
+      </Field>
+
+      <Field label="Resolution">
+        <textarea className="input textarea" value={resolution} onChange={e=>setResolution(e.target.value)}/>
+      </Field>
+
+      <Field label="Assigned to">
+        <input className="input" value={assignedTo} onChange={e=>setAssignedTo(e.target.value)}/>
+      </Field>
+
+      <Field label="Internal notes">
+        <textarea className="input textarea" value={notes} onChange={e=>setNotes(e.target.value)}/>
+      </Field>
+
+      <Field label="Refund approved">
+        <input className="input" type="number" min="0" step="0.01" value={approved} onChange={e=>setApproved(e.target.value)}/>
+      </Field>
+
+      <Field label="Replacement order ID">
+        <input className="input" value={replacement} onChange={e=>setReplacement(e.target.value)}/>
+      </Field>
+
+      {error?<ErrorBox error={error}/>:null}
+
+      <div className="actions">
+        <Button disabled={saving} onClick={()=>void save()}>{saving?"Saving...":"Save case"}</Button>
+      </div>
+    </div>:error?<ErrorBox error={error}/>:null}
+  </Modal>;
+}
 export function InventoryModal({token,row,canAdjust,canMove,onClose,onDone}:{token:Token;row:Obj;canAdjust:boolean;canMove:boolean;onClose:()=>void;onDone:()=>void}){const[mode,setMode]=useState<"adjust"|"move"|null>(null);return <Modal title={`${txt(get(row,"sku_id","SKU_ID"))} @ ${txt(get(row,"location_id","LOCATION_ID"))}`} onClose={onClose}><div className="order-top"><div><span>On hand</span><strong>{num(get(row,"qty_on_hand","QTY_ON_HAND"))}</strong></div><div><span>Allocated</span><strong>{num(get(row,"qty_allocated","QTY_ALLOCATED"))}</strong></div><div><span>Available</span><strong>{num(get(row,"qty_available","QTY_AVAILABLE"))}</strong></div><div><span>Inventory key</span><strong>{txt(get(row,"inventory_key","INVENTORY_KEY"))}</strong></div></div><div className="cp-actionbar"><Button disabled={!canAdjust} onClick={()=>setMode("adjust")}>Adjust stock</Button><Button kind="ghost" disabled={!canMove||num(get(row,"qty_allocated","QTY_ALLOCATED"))!==0} onClick={()=>setMode("move")}>Move row</Button></div>{mode==="adjust"&&<InventoryAdjust token={token} row={row} onClose={()=>setMode(null)} onDone={onDone}/>} {mode==="move"&&<InventoryMove token={token} row={row} onClose={()=>setMode(null)} onDone={onDone}/>}</Modal>}
 function InventoryAdjust({token,row,onClose,onDone}:{token:Token;row:Obj;onClose:()=>void;onDone:()=>void}){  const key=txt(get(row,"inventory_key","INVENTORY_KEY")),current=num(get(row,"qty_on_hand","QTY_ON_HAND")),allocated=num(get(row,"qty_allocated","QTY_ALLOCATED"));  const[reasons,setReasons]=useState<Obj[]>([]),[reason,setReason]=useState(""),[count,setCount]=useState(String(current)),[notes,setNotes]=useState(""),[error,setError]=useState<unknown>(null),[saving,setSaving]=useState(false);  useEffect(()=>{loadReasons(token,"INVENTORY_ADJUST").then(r=>{setReasons(r);setReason(txt(get(r[0],"reason_code","REASON_CODE"),""))}).catch(setError)},[token]);  const target=Number(count),delta=target-current,unsafe=count===""||!Number.isFinite(target)||target<0||target<allocated;  async function save(){setSaving(true);try{await api(token,`/api/admin/inventory/${key}/count`,{method:"POST",body:JSON.stringify({countedQty:target,expectedQtyOnHand:current,reasonCode:reason,notes,stationId:"ADMIN",operationId:newOperationId("stock-count")})});onDone()}catch(e){setError(e)}finally{setSaving(false)}}  return <div className="nested-confirm"><h3>Record stock count</h3><div className="form"><Field label="Total physical count" help={`Current system on-hand: ${current}. WMS will derive adjustment ${delta>=0?"+":""}${delta}.`}><input className="input" type="number" min={allocated} step="1" value={count} onChange={e=>setCount(e.target.value)} placeholder="Enter total counted quantity"/></Field><Field label="Reason"><ReasonSelect reasons={reasons} value={reason} onChange={setReason}/></Field><Field label="Notes"><textarea className="input textarea" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Count context or discrepancy notes"/></Field>{target<allocated&&<div className="warningbox">Count cannot be below the {allocated} units already allocated.</div>}{error?<ErrorBox error={error}/>:null}<div className="actions"><Button kind="ghost" onClick={onClose}>Cancel</Button><Button disabled={saving||unsafe||delta===0||!reason} onClick={()=>void save()}>{saving?"Recording...":"Record physical count"}</Button></div></div></div>;}
 function InventoryMove({token,row,onClose,onDone}:{token:Token;row:Obj;onClose:()=>void;onDone:()=>void}){const key=txt(get(row,"inventory_key","INVENTORY_KEY"));const[reasons,setReasons]=useState<Obj[]>([]),[reason,setReason]=useState(""),[to,setTo]=useState(""),[notes,setNotes]=useState(""),[error,setError]=useState<unknown>(null),[saving,setSaving]=useState(false);useEffect(()=>{loadReasons(token,"INVENTORY_MOVE").then(r=>{setReasons(r);setReason(txt(get(r[0],"reason_code","REASON_CODE"),""))}).catch(setError)},[token]);async function save(){setSaving(true);try{await api(token,`/api/admin/inventory/${key}/move`,{method:"POST",body:JSON.stringify({toLocationId:to,reasonCode:reason,notes,stationId:"ADMIN"})});onDone()}catch(e){setError(e)}finally{setSaving(false)}}return <div className="nested-confirm"><h3>Move inventory row</h3><div className="form"><Field label="Destination location"><input className="input" value={to} onChange={e=>setTo(e.target.value)}/></Field><Field label="Reason"><ReasonSelect reasons={reasons} value={reason} onChange={setReason}/></Field><Field label="Notes"><textarea className="input textarea" value={notes} onChange={e=>setNotes(e.target.value)}/></Field>{error?<ErrorBox error={error}/>:null}<div className="actions"><Button kind="ghost" onClick={onClose}>Cancel</Button><Button disabled={saving||!to||!reason||to===txt(get(row,"location_id","LOCATION_ID"))} onClick={()=>void save()}>{saving?"Moving...":"Move stock"}</Button></div></div></div>}
@@ -136,61 +562,103 @@ function ShipConfirmModal({token,row,onClose,onDone}:{token:Token;row:Obj;onClos
 
 export function CataloguePage({token,has}:{token:Token;has:HasPermission}){const[q,setQ]=useState(""),[rows,setRows]=useState<Obj[]>([]),[selected,setSelected]=useState<Obj|null>(null),[detail,setDetail]=useState<Obj|null>(null),[loading,setLoading]=useState(true),[error,setError]=useState<unknown>(null),[nonce,setNonce]=useState(0),[creating,setCreating]=useState(false);useEffect(()=>{let live=true;setLoading(true);api<Obj[]>(token,"/api/admin/products"+query({q:q||undefined,limit:200})).then(x=>live&&setRows(items(x))).catch(e=>live&&setError(e)).finally(()=>live&&setLoading(false));return()=>{live=false}},[token,q,nonce]);useEffect(()=>{if(!selected){setDetail(null);return}const id=txt(get(selected,"product_id","PRODUCT_ID"));api<Obj>(token,`/api/admin/products/${encodeURIComponent(id)}`).then(setDetail).catch(setError)},[selected,token,nonce]);return <><Header title="Catalogue" sub="Products, variants, pricing and web availability. Mutations use the existing admin-management API and DYNETIC audit trail." action={has("product.create")?<Button onClick={()=>setCreating(true)}>Create product</Button>:undefined}/><Card><div className="toolbar"><Search value={q} setValue={setQ} placeholder="Search product, SKU or slug..."/><span>{rows.length} products</span></div>{error?<ErrorBox error={error}/>:loading?<Load/>:<Table rows={rows} cols={[{name:"Product",cell:r=><><strong>{txt(get(r,"product_name","PRODUCT_NAME"))}</strong><small>{txt(get(r,"product_id","PRODUCT_ID"))}</small></>},{name:"Category",cell:r=>txt(get(r,"category_name","CATEGORY_NAME","category_code","CATEGORY_CODE"))},{name:"Variants",cell:r=>num(get(r,"variant_count","VARIANT_COUNT"))},{name:"From",cell:r=>money(get(r,"min_price","MIN_PRICE"),txt(get(r,"currency","CURRENCY"),"GBP"))},{name:"Available",cell:r=>num(get(r,"qty_available","QTY_AVAILABLE"))},{name:"Status",cell:r=>bool(get(r,"active","ACTIVE"))?<Pill tone="good">Active</Pill>:<Pill tone="bad">Inactive</Pill>}]} keyOf={(r,i)=>txt(get(r,"product_id","PRODUCT_ID"),String(i))} onClick={setSelected}/>}</Card>{selected&&<CatalogueModal token={token} detail={detail} has={has} onClose={()=>setSelected(null)} onChanged={()=>setNonce(x=>x+1)}/>} {creating&&<CatalogueCreateModal token={token} onClose={()=>setCreating(false)} onDone={()=>{setCreating(false);setNonce(x=>x+1)}}/>}</>}
 function CatalogueCreateModal({token,onClose,onDone}:{token:Token;onClose:()=>void;onDone:()=>void}) {
-const [productId,setProductId]=useState("");
-const [name,setName]=useState("");
-const [slug,setSlug]=useState("");
-const [saving,setSaving]=useState(false);
-const [error,setError]=useState<unknown>(null);
+  const[productId,setProductId]=useState("");
+  const[name,setName]=useState("");
+  const[slug,setSlug]=useState("");
+  const[categories,setCategories]=useState<Obj[]>([]);
+  const[categoryCode,setCategoryCode]=useState("");
+  const[deliveryClass,setDeliveryClass]=useState("STANDARD");
+  const[currency,setCurrency]=useState("GBP");
+  const[saving,setSaving]=useState(false);
+  const[loadingCategories,setLoadingCategories]=useState(true);
+  const[error,setError]=useState<unknown>(null);
 
-async function save(){
- setSaving(true);
- setError(null);
+  useEffect(()=>{
+    let live=true;
+    setLoadingCategories(true);
+    api<Obj[]>(token,"/api/admin/product-categories")
+      .then(rows=>{
+        if(!live)return;
+        setCategories(rows);
+        setCategoryCode(txt(get(rows[0],"category_code","CATEGORY_CODE"),""));
+      })
+      .catch(e=>live&&setError(e))
+      .finally(()=>live&&setLoadingCategories(false));
+    return()=>{live=false};
+  },[token]);
 
- try {
-  await api(token,"/api/admin/products",{
-   method:"POST",
-   body:JSON.stringify({
-    productId,
-    productName:name,
-    slug
-   })
-  });
+  async function save(){
+    setSaving(true);
+    setError(null);
 
-  onDone();
+    try {
+      await api(token,"/api/admin/products",{
+        method:"POST",
+        body:JSON.stringify({
+          productId,
+          productName:name,
+          slug,
+          categoryCode,
+          deliveryClass,
+          currency
+        })
+      });
 
- } catch(e){
-  setError(e);
- } finally {
-  setSaving(false);
- }
-}
+      onDone();
+    } catch(e){
+      setError(e);
+    } finally {
+      setSaving(false);
+    }
+  }
 
-return <Modal title="Create product" onClose={onClose}>
-<div className="form">
+  return <Modal title="Create product" onClose={onClose}>
+    <div className="form">
+      <Field label="Product ID" help="Internal product master identifier.">
+        <input className="input" value={productId} onChange={e=>setProductId(e.target.value.toUpperCase())}/>
+      </Field>
 
-<Field label="Product ID">
-<input className="input" value={productId} onChange={e=>setProductId(e.target.value)}/>
-</Field>
+      <Field label="Name">
+        <input className="input" value={name} onChange={e=>setName(e.target.value)}/>
+      </Field>
 
-<Field label="Name">
-<input className="input" value={name} onChange={e=>setName(e.target.value)}/>
-</Field>
+      <Field label="Slug" help="Lower-case web address value, for example air-driven-fry-tray.">
+        <input className="input" value={slug} onChange={e=>setSlug(e.target.value.toLowerCase())}/>
+      </Field>
 
-<Field label="Slug">
-<input className="input" value={slug} onChange={e=>setSlug(e.target.value)}/>
-</Field>
+      <Field label="Category">
+        <select className="input" value={categoryCode} onChange={e=>setCategoryCode(e.target.value)} disabled={loadingCategories}>
+          <option value="">{loadingCategories?"Loading categories...":"Select category"}</option>
+          {categories.map((c,i)=>{
+            const code=txt(get(c,"category_code","CATEGORY_CODE"),String(i));
+            const label=txt(get(c,"category_name","CATEGORY_NAME"),code);
+            return <option key={code} value={code}>{label} ({code})</option>;
+          })}
+        </select>
+      </Field>
 
-{error?<ErrorBox error={error}/>:null}
+      <Field label="Delivery class">
+        <input className="input" value={deliveryClass} onChange={e=>setDeliveryClass(e.target.value.toUpperCase())}/>
+      </Field>
 
-<div className="actions">
-<Button kind="ghost" onClick={onClose}>Cancel</Button>
-<Button disabled={saving||!productId||!name} onClick={()=>void save()}>
-{saving?"Creating...":"Create"}
-</Button>
-</div>
+      <Field label="Currency">
+        <input className="input" value={currency} maxLength={3} onChange={e=>setCurrency(e.target.value.toUpperCase())}/>
+      </Field>
 
-</div>
-</Modal>
+      {categories.length===0&&!loadingCategories&&!error?<div className="warningbox">No active product categories are configured. A category is required before a product can be created.</div>:null}
+      {error?<ErrorBox error={error}/>:null}
+
+      <div className="actions">
+        <Button kind="ghost" onClick={onClose}>Cancel</Button>
+        <Button
+          disabled={saving||loadingCategories||!productId||!name||!slug||!categoryCode}
+          onClick={()=>void save()}
+        >
+          {saving?"Creating...":"Create product"}
+        </Button>
+      </div>
+    </div>
+  </Modal>;
 }
 function CatalogueModal({token,detail,has,onClose,onChanged}:{token:Token;detail:Obj|null;has:HasPermission;onClose:()=>void;onChanged:()=>void}){const[editing,setEditing]=useState(false),[variant,setVariant]=useState<Obj|null>(null);if(!detail)return <Modal title="Product" onClose={onClose}><Load/></Modal>;const id=txt(get(detail,"product_id","PRODUCT_ID")),variants=(get(detail,"variants") as Obj[])||[];return <Modal title={txt(get(detail,"product_name","PRODUCT_NAME"),id)} onClose={onClose} wide><div className="cp-actionbar">{has("product.update")&&<Button onClick={()=>setEditing(true)}>Edit product</Button>}</div><div className="detail-grid"><section className="detail-card"><h3>Catalogue</h3><strong>{id}</strong><span>{txt(get(detail,"slug","SLUG"))}</span><span>{txt(get(detail,"category_code","CATEGORY_CODE"))}</span></section><section className="detail-card"><h3>Delivery</h3><strong>{txt(get(detail,"delivery_class","DELIVERY_CLASS"))}</strong><span>{txt(get(detail,"currency","CURRENCY"),"GBP")}</span></section><section className="detail-card"><h3>Web</h3><strong>{bool(get(detail,"active","ACTIVE"))?"Active":"Inactive"}</strong><span>{bool(get(detail,"featured","FEATURED"))?"Featured":"Standard"}</span></section></div><h3 className="detail-heading">Variants</h3><Table rows={variants} cols={[{name:"SKU",cell:r=>txt(get(r,"sku_id","SKU_ID"))},{name:"Variant",cell:r=>txt(get(r,"variant_name","VARIANT_NAME"))},{name:"Price",cell:r=>money(get(r,"web_price","WEB_PRICE"),txt(get(detail,"currency","CURRENCY"),"GBP"))},{name:"Available",cell:r=>num(get(r,"qty_available","QTY_AVAILABLE"))},{name:"Sale",cell:r=>txt(get(r,"sale_type","SALE_TYPE"))},{name:"State",cell:r=>txt(get(r,"availability_state","AVAILABILITY_STATE"))}]} keyOf={(r,i)=>txt(get(r,"sku_id","SKU_ID"),String(i))} onClick={has("product.update")?setVariant:undefined}/>{editing&&<ProductEditModal token={token} product={detail} onClose={()=>setEditing(false)} onDone={()=>{setEditing(false);onChanged()}}/>}{variant&&<VariantEditModal token={token} variant={variant} canPrice={has("pricing.update")} onClose={()=>setVariant(null)} onDone={()=>{setVariant(null);onChanged()}}/>}</Modal>}
 function ProductEditModal({token,product,onClose,onDone}:{token:Token;product:Obj;onClose:()=>void;onDone:()=>void}){const id=txt(get(product,"product_id","PRODUCT_ID"));const[name,setName]=useState(txt(get(product,"product_name","PRODUCT_NAME"),"")),[brand,setBrand]=useState(txt(get(product,"brand_name","BRAND_NAME"),"")),[category,setCategory]=useState(txt(get(product,"category_code","CATEGORY_CODE"),"")),[delivery,setDelivery]=useState(txt(get(product,"delivery_class","DELIVERY_CLASS"),"STANDARD")),[short,setShort]=useState(txt(get(product,"short_description","SHORT_DESCRIPTION"),"")),[description,setDescription]=useState(txt(get(product,"description","DESCRIPTION"),"")),[active,setActive]=useState(bool(get(product,"active","ACTIVE"))),[featured,setFeatured]=useState(bool(get(product,"featured","FEATURED"))),[sort,setSort]=useState(txt(get(product,"sort_sequence","SORT_SEQUENCE"),"100")),[error,setError]=useState<unknown>(null),[saving,setSaving]=useState(false);async function save(){setSaving(true);try{await api(token,`/api/admin/products/${id}`,{method:"PATCH",body:JSON.stringify({productName:name,brandName:brand||null,categoryCode:category,deliveryClass:delivery,shortDescription:short||null,description:description||null,active,featured,sortSequence:Number(sort)})});onDone()}catch(e){setError(e)}finally{setSaving(false)}}return <Modal title={`Edit ${id}`} onClose={onClose}><div className="form"><Field label="Product name"><input className="input" value={name} onChange={e=>setName(e.target.value)}/></Field><Field label="Brand"><input className="input" value={brand} onChange={e=>setBrand(e.target.value)}/></Field><Field label="Category code"><input className="input" value={category} onChange={e=>setCategory(e.target.value)}/></Field><Field label="Delivery class"><input className="input" value={delivery} onChange={e=>setDelivery(e.target.value)}/></Field><Field label="Short description"><textarea className="input textarea" value={short} onChange={e=>setShort(e.target.value)}/></Field><Field label="Description"><textarea className="input textarea" value={description} onChange={e=>setDescription(e.target.value)}/></Field><Field label="Sort sequence"><input className="input" type="number" value={sort} onChange={e=>setSort(e.target.value)}/></Field><label className="check"><input type="checkbox" checked={active} onChange={e=>setActive(e.target.checked)}/> Active</label><label className="check"><input type="checkbox" checked={featured} onChange={e=>setFeatured(e.target.checked)}/> Featured</label>{error?<ErrorBox error={error}/>:null}<div className="actions"><Button kind="ghost" onClick={onClose}>Cancel</Button><Button disabled={saving||!name||!category} onClick={()=>void save()}>{saving?"Saving...":"Save product"}</Button></div></div></Modal>}
@@ -199,7 +667,7 @@ function VariantEditModal({token,variant,canPrice,onClose,onDone}:{token:Token;v
 export function InboundPage({token,has}:{token:Token;has:HasPermission}){const[suppliers,setSuppliers]=useState<Obj[]>([]),[pre,setPre]=useState<Obj[]>([]),[selected,setSelected]=useState<Obj|null>(null),[creating,setCreating]=useState(false),[error,setError]=useState<unknown>(null),[loading,setLoading]=useState(true),[nonce,setNonce]=useState(0);useEffect(()=>{let live=true;setLoading(true);Promise.all([api<Obj[]>(token,"/api/admin/suppliers"),api<Obj[]>(token,"/api/admin/pre-advice?limit=200")]).then(([s,p])=>{if(live){setSuppliers(s);setPre(p)}}).catch(e=>live&&setError(e)).finally(()=>live&&setLoading(false));return()=>{live=false}},[token,nonce]);if(error)return <ErrorBox error={error}/>;if(loading)return <Load/>;return <><Header title="Inbound" sub="Supplier maintenance and inbound pre-advice visibility." action={has("supplier.manage")?<Button onClick={()=>setCreating(true)}>Add supplier</Button>:undefined}/><div className="grid2"><Card><h2>Suppliers</h2><div className="cp-stack">{suppliers.map((s,i)=><button className="cp-list-button" key={txt(get(s,"supplier_id","SUPPLIER_ID"),String(i))} onClick={()=>setSelected(s)}><div><strong>{txt(get(s,"name","NAME"))}</strong><span>{txt(get(s,"supplier_id","SUPPLIER_ID"))}</span></div>{bool(get(s,"active","ACTIVE"))?<Pill tone="good">Active</Pill>:<Pill tone="bad">Inactive</Pill>}</button>)}</div></Card><Card><h2>Pre-advice</h2>{pre.length?<div className="cp-stack">{pre.map((p,i)=><div className="cp-list-row" key={txt(get(p,"pre_advice_id","PRE_ADVICE_ID"),String(i))}><div><strong>{txt(get(p,"pre_advice_id","PRE_ADVICE_ID"))}</strong><span>{txt(get(p,"supplier_id","SUPPLIER_ID"))} · {dt(get(p,"due_dstamp","DUE_DSTAMP"))}</span></div>{statusPill(get(p,"status","STATUS"))}</div>)}</div>:<Empty>No pre-advice.</Empty>}</Card></div>{creating&&<SupplierModal token={token} onClose={()=>setCreating(false)} onDone={()=>{setCreating(false);setNonce(x=>x+1)}}/>}{selected&&<SupplierModal token={token} supplier={selected} onClose={()=>setSelected(null)} onDone={()=>{setSelected(null);setNonce(x=>x+1)}} readOnly={!has("supplier.manage")}/>}</>}
 function SupplierModal({token,supplier,onClose,onDone,readOnly=false}:{token:Token;supplier?:Obj;onClose:()=>void;onDone:()=>void;readOnly?:boolean}){const[id,setId]=useState(txt(supplier&&get(supplier,"supplier_id","SUPPLIER_ID"),"")),[name,setName]=useState(txt(supplier&&get(supplier,"name","NAME"),"")),[contact,setContact]=useState(txt(supplier&&get(supplier,"contact","CONTACT"),"")),[email,setEmail]=useState(txt(supplier&&get(supplier,"contact_email","CONTACT_EMAIL"),"")),[phone,setPhone]=useState(txt(supplier&&get(supplier,"contact_phone","CONTACT_PHONE"),"")),[notes,setNotes]=useState(txt(supplier&&get(supplier,"notes","NOTES"),"")),[active,setActive]=useState(supplier?bool(get(supplier,"active","ACTIVE")):true),[error,setError]=useState<unknown>(null),[saving,setSaving]=useState(false);async function save(){setSaving(true);try{const body={supplierId:id,name,contact:contact||null,contactEmail:email||null,contactPhone:phone||null,notes:notes||null,active};if(supplier)await api(token,`/api/admin/suppliers/${encodeURIComponent(id)}`,{method:"PATCH",body:JSON.stringify(body)});else await api(token,"/api/admin/suppliers",{method:"POST",body:JSON.stringify(body)});onDone()}catch(e){setError(e)}finally{setSaving(false)}}return <Modal title={supplier?`Supplier ${id}`:"Add supplier"} onClose={onClose}><div className="form"><Field label="Supplier ID"><input className="input" disabled={!!supplier||readOnly} value={id} onChange={e=>setId(e.target.value.toUpperCase())}/></Field><Field label="Name"><input className="input" disabled={readOnly} value={name} onChange={e=>setName(e.target.value)}/></Field><Field label="Contact"><input className="input" disabled={readOnly} value={contact} onChange={e=>setContact(e.target.value)}/></Field><Field label="Email"><input className="input" disabled={readOnly} value={email} onChange={e=>setEmail(e.target.value)}/></Field><Field label="Phone"><input className="input" disabled={readOnly} value={phone} onChange={e=>setPhone(e.target.value)}/></Field><Field label="Notes"><textarea className="input textarea" disabled={readOnly} value={notes} onChange={e=>setNotes(e.target.value)}/></Field><label className="check"><input type="checkbox" disabled={readOnly} checked={active} onChange={e=>setActive(e.target.checked)}/> Active</label>{error?<ErrorBox error={error}/>:null} {!readOnly&&<div className="actions"><Button kind="ghost" onClick={onClose}>Cancel</Button><Button disabled={saving||!id||!name} onClick={()=>void save()}>{saving?"Saving...":"Save supplier"}</Button></div>}</div></Modal>}
 
-export function DeliveryPage({token}:{token:Token}){const[data,setData]=useState<Obj|null>(null),[error,setError]=useState<unknown>(null);useEffect(()=>{api<Obj>(token,"/api/admin/carriers").then(setData).catch(setError)},[token]);if(error)return <ErrorBox error={error}/>;if(!data)return <Load/>;const carriers=(get(data,"carriers") as Obj[])||[],services=(get(data,"services") as Obj[])||[],rates=(get(data,"rates") as Obj[])||[],zones=(get(data,"deliveryZones") as Obj[])||[],classes=(get(data,"deliveryClassControls") as Obj[])||[];return <><Header title="Delivery" sub="Carrier, service, rate, delivery-zone and class-control read model. 0.3.15 intentionally exposes this as read-only."/><div className="cp-metrics"><Metric label="Carriers" value={carriers.length}/><Metric label="Services" value={services.length}/><Metric label="Rates" value={rates.length}/><Metric label="Zones" value={zones.length}/><Metric label="Delivery classes" value={classes.length}/></div><div className="grid2"><Card><h2>Carriers</h2><MiniJsonRows rows={carriers}/></Card><Card><h2>Services</h2><MiniJsonRows rows={services}/></Card><Card><h2>Zones</h2><MiniJsonRows rows={zones}/></Card><Card><h2>Rates</h2><MiniJsonRows rows={rates}/></Card><Card wide><h2>Delivery class controls</h2><MiniJsonRows rows={classes}/></Card></div></>}
+export function DeliveryPage({token}:{token:Token}){const[data,setData]=useState<Obj|null>(null),[error,setError]=useState<unknown>(null);useEffect(()=>{api<Obj>(token,"/api/admin/carriers").then(setData).catch(setError)},[token]);if(error)return <ErrorBox error={error}/>;if(!data)return <Load/>;const carriers=(get(data,"carriers") as Obj[])||[],services=(get(data,"services") as Obj[])||[],rates=(get(data,"rates") as Obj[])||[],zones=(get(data,"deliveryZones") as Obj[])||[],classes=(get(data,"deliveryClassControls") as Obj[])||[];return <><Header title="Delivery" sub="Carrier, service, rate, delivery-zone and class-control read model. Delivery configuration is currently read-only in Admin."/><div className="cp-metrics"><Metric label="Carriers" value={carriers.length}/><Metric label="Services" value={services.length}/><Metric label="Rates" value={rates.length}/><Metric label="Zones" value={zones.length}/><Metric label="Delivery classes" value={classes.length}/></div><div className="grid2"><Card><h2>Carriers</h2><MiniJsonRows rows={carriers}/></Card><Card><h2>Services</h2><MiniJsonRows rows={services}/></Card><Card><h2>Zones</h2><MiniJsonRows rows={zones}/></Card><Card><h2>Rates</h2><MiniJsonRows rows={rates}/></Card><Card wide><h2>Delivery class controls</h2><MiniJsonRows rows={classes}/></Card></div></>}
 
 export function PromotionsPage({token,has}:{token:Token;has:HasPermission}){const[rows,setRows]=useState<Obj[]>([]),[selected,setSelected]=useState<Obj|null>(null),[loading,setLoading]=useState(true),[error,setError]=useState<unknown>(null),[nonce,setNonce]=useState(0),[creating,setCreating]=useState(false);useEffect(()=>{setLoading(true);api<Obj[]>(token,"/api/admin/promotions").then(setRows).catch(setError).finally(()=>setLoading(false))},[token,nonce]);return <><Header title="Promotions" sub="Existing promotion maintenance. 0.3.15 does not expose a create endpoint, so only existing records can be changed."/><Card>{error?<ErrorBox error={error}/>:loading?<Load/>:<Table rows={rows} cols={[{name:"Promotion",cell:r=><><strong>{txt(get(r,"promotion_id","PROMOTION_ID"))}</strong><small>{txt(get(r,"description","DESCRIPTION"))}</small></>},{name:"Value",cell:r=>txt(get(r,"promotion_value","PROMOTION_VALUE"))},{name:"Minimum",cell:r=>money(get(r,"min_order_value","MIN_ORDER_VALUE"))},{name:"Starts",cell:r=>dt(get(r,"starts_dstamp","STARTS_DSTAMP"))},{name:"Ends",cell:r=>dt(get(r,"ends_dstamp","ENDS_DSTAMP"))},{name:"Status",cell:r=>bool(get(r,"active","ACTIVE"))?<Pill tone="good">Active</Pill>:<Pill>Inactive</Pill>}]} keyOf={(r,i)=>txt(get(r,"promotion_id","PROMOTION_ID"),String(i))} onClick={setSelected}/>}</Card>{selected&&<PromotionModal token={token} item={selected} canEdit={has("promotion.manage")} onClose={()=>setSelected(null)} onDone={()=>{setSelected(null);setNonce(x=>x+1)}}/>}</>}
 function PromotionModal({token,item,canEdit,onClose,onDone}:{token:Token;item:Obj;canEdit:boolean;onClose:()=>void;onDone:()=>void}){const id=txt(get(item,"promotion_id","PROMOTION_ID"));const[description,setDescription]=useState(txt(get(item,"description","DESCRIPTION"),"")),[value,setValue]=useState(txt(get(item,"promotion_value","PROMOTION_VALUE"),"")),[minimum,setMinimum]=useState(txt(get(item,"min_order_value","MIN_ORDER_VALUE"),"")),[starts,setStarts]=useState(dateInput(get(item,"starts_dstamp","STARTS_DSTAMP"))),[ends,setEnds]=useState(dateInput(get(item,"ends_dstamp","ENDS_DSTAMP"))),[active,setActive]=useState(bool(get(item,"active","ACTIVE"))),[error,setError]=useState<unknown>(null),[saving,setSaving]=useState(false);async function save(){setSaving(true);try{await api(token,`/api/admin/promotions/${id}`,{method:"PATCH",body:JSON.stringify({description,promotionValue:value===""?undefined:Number(value),minOrderValue:minimum===""?undefined:Number(minimum),startsDstamp:starts||undefined,endsDstamp:ends||undefined,active})});onDone()}catch(e){setError(e)}finally{setSaving(false)}}return <Modal title={`Promotion ${id}`} onClose={onClose}><div className="form"><Field label="Description"><input className="input" disabled={!canEdit} value={description} onChange={e=>setDescription(e.target.value)}/></Field><Field label="Promotion value"><input className="input" disabled={!canEdit} type="number" step="0.01" value={value} onChange={e=>setValue(e.target.value)}/></Field><Field label="Minimum order value"><input className="input" disabled={!canEdit} type="number" step="0.01" value={minimum} onChange={e=>setMinimum(e.target.value)}/></Field><Field label="Starts"><input className="input" disabled={!canEdit} type="datetime-local" value={starts} onChange={e=>setStarts(e.target.value)}/></Field><Field label="Ends"><input className="input" disabled={!canEdit} type="datetime-local" value={ends} onChange={e=>setEnds(e.target.value)}/></Field><label className="check"><input type="checkbox" disabled={!canEdit} checked={active} onChange={e=>setActive(e.target.checked)}/> Active</label>{error?<ErrorBox error={error}/>:null} {canEdit&&<div className="actions"><Button disabled={saving} onClick={()=>void save()}>{saving?"Saving...":"Save promotion"}</Button></div>}</div></Modal>}
@@ -213,8 +681,143 @@ export function CommunicationsPage({token,has}:{token:Token;has:HasPermission}){
 export function InterfacesPage({token,has}:{token:Token;has:HasPermission}){const[status,setStatus]=useState(""),[rows,setRows]=useState<Obj[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState<unknown>(null),[working,setWorking]=useState(""),[nonce,setNonce]=useState(0);useEffect(()=>{setLoading(true);api<Obj[]>(token,"/api/admin/interfaces/orders"+query({status:status||undefined,limit:300})).then(setRows).catch(setError).finally(()=>setLoading(false))},[token,status,nonce]);async function retry(id:string){setWorking(id);try{await api(token,`/api/admin/interfaces/orders/${id}/retry`,{method:"POST",body:"{}"});setNonce(x=>x+1)}catch(e){setError(e)}finally{setWorking("")}}return <><Header title="Interfaces" sub="Inbound order interface processing and safe retry for failed records."/><Card><div className="toolbar"><select className="input cp-filter" value={status} onChange={e=>setStatus(e.target.value)}><option value="">All statuses</option><option>NEW</option><option>PROCESSED</option><option>FAILED</option><option>ERROR</option></select><span>{rows.length} interface records</span></div>{error?<ErrorBox error={error}/>:loading?<Load/>:<div className="tablewrap"><table><thead><tr><th>Interface</th><th>Source</th><th>Source order</th><th>Status</th><th>Error</th><th>Created</th><th/></tr></thead><tbody>{rows.map((r,i)=>{const id=txt(get(r,"interface_id","INTERFACE_ID"),String(i)),s=txt(get(r,"process_status","PROCESS_STATUS"));return <tr key={id}><td><code>{id}</code></td><td>{txt(get(r,"source_system","SOURCE_SYSTEM"))}</td><td>{txt(get(r,"source_order_id","SOURCE_ORDER_ID"))}</td><td>{statusPill(s)}</td><td>{txt(get(r,"error_text","ERROR_TEXT"),"")}</td><td>{dt(get(r,"created_dstamp","CREATED_DSTAMP"))}</td><td><Button kind="ghost" disabled={!has("interface.retry")||!["FAILED","ERROR"].includes(s)||working===id} onClick={()=>void retry(id)}>{working===id?"Retrying...":"Retry"}</Button></td></tr>})}</tbody></table></div>}</Card></>}
 
 
-export function AuditPage({token}:{token:Token}){const[entityType,setEntityType]=useState(""),[entityId,setEntityId]=useState(""),[rows,setRows]=useState<Obj[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState<unknown>(null);useEffect(()=>{const t=setTimeout(()=>{setLoading(true);api<Obj[]>(token,"/api/admin/audit"+query({entityType:entityType||undefined,entityId:entityId||undefined,limit:300})).then(setRows).catch(setError).finally(()=>setLoading(false))},150);return()=>clearTimeout(t)},[token,entityType,entityId]);return <><Header title="Audit trail" sub="Administrative changes recorded by DYNETIC."/><Card><div className="toolbar cp-filters"><input className="input cp-filter" value={entityType} onChange={e=>setEntityType(e.target.value.toUpperCase())} placeholder="Entity type"/><input className="input cp-filter" value={entityId} onChange={e=>setEntityId(e.target.value)} placeholder="Entity ID"/><span>{rows.length} events</span></div>{error?<ErrorBox error={error}/>:loading?<Load/>:<Table rows={rows} cols={[{name:"When",cell:r=>dt(get(r,"created_dstamp","CREATED_DSTAMP"))},{name:"Entity",cell:r=><><strong>{txt(get(r,"entity_type","ENTITY_TYPE"))}</strong><small>{txt(get(r,"entity_id","ENTITY_ID"))}</small></>},{name:"Action",cell:r=>statusPill(get(r,"action","ACTION"))},{name:"Changed by",cell:r=>txt(get(r,"changed_by","CHANGED_BY"))},{name:"Reason",cell:r=>txt(get(r,"reason","REASON"))}]} keyOf={(r,i)=>txt(get(r,"audit_id","AUDIT_ID"),String(i))}/>}</Card></>}
+type AuditMeta={entityTypes?:string[];actions?:string[]};
 
+function auditObject(value:unknown):Obj{
+  if(value&&typeof value==="object"&&!Array.isArray(value))return value as Obj;
+  if(typeof value==="string"){
+    try{
+      const parsed=JSON.parse(value);
+      if(parsed&&typeof parsed==="object"&&!Array.isArray(parsed))return parsed as Obj;
+    }catch{}
+  }
+  return {};
+}
+
+function auditValue(value:unknown){
+  let result:string;
+  if(value===undefined)result="(not set)";
+  else if(value===null)result="null";
+  else if(typeof value==="string")result=value;
+  else{
+    try{result=JSON.stringify(value)}catch{result=String(value)}
+  }
+  return result.length>120?result.slice(0,117)+"...":result;
+}
+
+function auditChanges(row:Obj){
+  const before=auditObject(get(row,"before_data","BEFORE_DATA"));
+  const after=auditObject(get(row,"after_data","AFTER_DATA"));
+  const keys=Array.from(new Set([...Object.keys(before),...Object.keys(after)])).sort();
+  return keys
+    .filter(key=>JSON.stringify(before[key])!==JSON.stringify(after[key]))
+    .map(field=>({field,before:auditValue(before[field]),after:auditValue(after[field])}));
+}
+
+export function AuditPage({token}:{token:Token}){
+  const[meta,setMeta]=useState<AuditMeta>({});
+  const[entityType,setEntityType]=useState("");
+  const[entityId,setEntityId]=useState("");
+  const[action,setAction]=useState("");
+  const[changedBy,setChangedBy]=useState("");
+  const[dateFrom,setDateFrom]=useState("");
+  const[dateTo,setDateTo]=useState("");
+  const[offset,setOffset]=useState(0);
+  const limit=100;
+  const[rows,setRows]=useState<Obj[]>([]);
+  const[loading,setLoading]=useState(true);
+  const[error,setError]=useState<unknown>(null);
+
+  useEffect(()=>{
+    api<AuditMeta>(token,"/api/admin/audit/meta")
+      .then(setMeta)
+      .catch(setError);
+  },[token]);
+
+  useEffect(()=>{
+    const timer=window.setTimeout(()=>{
+      setLoading(true);
+      setError(null);
+      api<Obj[]>(token,"/api/admin/audit"+query({
+        entityType:entityType||undefined,
+        entityId:entityId||undefined,
+        action:action||undefined,
+        changedBy:changedBy||undefined,
+        dateFrom:dateFrom||undefined,
+        dateTo:dateTo||undefined,
+        limit,
+        offset
+      }))
+        .then(setRows)
+        .catch(setError)
+        .finally(()=>setLoading(false));
+    },150);
+    return()=>window.clearTimeout(timer);
+  },[token,entityType,entityId,action,changedBy,dateFrom,dateTo,offset]);
+
+  const resetPage=()=>setOffset(0);
+
+  const cols=[
+    {name:"When",cell:(r:Obj)=>dt(get(r,"created_dstamp","CREATED_DSTAMP"))},
+    {name:"Entity",cell:(r:Obj)=><><strong>{txt(get(r,"entity_type","ENTITY_TYPE"))}</strong><small>{txt(get(r,"entity_id","ENTITY_ID"))}</small></>},
+    {name:"Action",cell:(r:Obj)=>statusPill(get(r,"action","ACTION"))},
+    {name:"Changed by",cell:(r:Obj)=>txt(get(r,"changed_by","CHANGED_BY"),"-")},
+    {name:"Reason",cell:(r:Obj)=>txt(get(r,"reason","REASON"),"-")},
+    {name:"Changes",cell:(r:Obj)=>{
+      const changes=auditChanges(r);
+      if(!changes.length)return "-";
+      return <details>
+        <summary>{changes.length} field{changes.length===1?"":"s"} changed</summary>
+        <div className="cp-mini">{changes.map(c=><div key={c.field}>
+          <b>{c.field.replaceAll("_"," ")}</b>
+          <span>{c.before} {" -> "} {c.after}</span>
+        </div>)}</div>
+      </details>;
+    }}
+  ];
+
+  return <>
+    <Header title="Audit trail" sub="Search administrative changes by entity, action, operator and date, with field-level before/after values."/>
+
+    <Card>
+      <div className="toolbar cp-filters">
+        <select className="input cp-filter" value={entityType} onChange={e=>{setEntityType(e.target.value);resetPage()}}>
+          <option value="">All entity types</option>
+          {(meta.entityTypes??[]).map(x=><option key={x} value={x}>{x}</option>)}
+        </select>
+
+        <input className="input cp-filter" value={entityId} onChange={e=>{setEntityId(e.target.value);resetPage()}} placeholder="Entity ID contains..."/>
+
+        <select className="input cp-filter" value={action} onChange={e=>{setAction(e.target.value);resetPage()}}>
+          <option value="">All actions</option>
+          {(meta.actions??[]).map(x=><option key={x} value={x}>{x}</option>)}
+        </select>
+
+        <input className="input cp-filter" value={changedBy} onChange={e=>{setChangedBy(e.target.value);resetPage()}} placeholder="Changed by contains..."/>
+
+        <Field label="From">
+          <input className="input cp-filter" type="date" value={dateFrom} onChange={e=>{setDateFrom(e.target.value);resetPage()}}/>
+        </Field>
+
+        <Field label="To">
+          <input className="input cp-filter" type="date" value={dateTo} onChange={e=>{setDateTo(e.target.value);resetPage()}}/>
+        </Field>
+      </div>
+
+      {error?<ErrorBox error={error}/>:loading?<Load/>:<Table
+        rows={rows}
+        cols={cols}
+        keyOf={(r,i)=>txt(get(r,"audit_id","AUDIT_ID"),String(i))}
+      />}
+
+      <div className="actions">
+        <Button kind="ghost" disabled={offset===0} onClick={()=>setOffset(Math.max(0,offset-limit))}>Previous</Button>
+        <span>{rows.length?`${offset+1}-${offset+rows.length}`:"0"} events</span>
+        <Button kind="ghost" disabled={rows.length<limit} onClick={()=>setOffset(offset+limit)}>Next</Button>
+      </div>
+    </Card>
+  </>;
+}
 export function AccessPage({token,has}:{token:Token;has:HasPermission}){const[users,setUsers]=useState<Obj[]>([]),[roles,setRoles]=useState<Obj[]>([]),[permissions,setPermissions]=useState<Obj[]>([]),[error,setError]=useState<unknown>(null),[loading,setLoading]=useState(true),[add,setAdd]=useState(false),[edit,setEdit]=useState<Obj|null>(null),[nonce,setNonce]=useState(0);useEffect(()=>{let live=true;setLoading(true);Promise.all([api<Obj[]>(token,"/api/admin/users"),api<Obj[]>(token,"/api/admin/roles"),api<Obj[]>(token,"/api/admin/permissions")]).then(([u,r,p])=>{if(live){setUsers(u);setRoles(r);setPermissions(p)}}).catch(e=>live&&setError(e)).finally(()=>live&&setLoading(false));return()=>{live=false}},[token,nonce]);if(error)return <ErrorBox error={error}/>;if(loading)return <Load/>;return <><Header title="Users & access" sub="Auth0 proves identity; DYNETIC decides internal access." action={has("user.create")?<Button onClick={()=>setAdd(true)}>Add staff user</Button>:undefined}/><div className="grid2"><Card><h2>Staff users</h2><div className="users">{users.map((u,i)=><button key={txt(get(u,"admin_user_id","ADMIN_USER_ID"),String(i))} onClick={()=>setEdit(u)}><div><strong>{txt(get(u,"display_name","DISPLAY_NAME","email","EMAIL"))}</strong><span>{txt(get(u,"email","EMAIL"))}</span></div><div>{((get(u,"roles") as string[])||[]).map(r=><Pill key={r} tone={r==="OWNER"?"good":""}>{r}</Pill>)}</div></button>)}</div></Card><Card><h2>Roles</h2><div className="roles">{roles.map((r,i)=><div key={txt(get(r,"role_code","ROLE_CODE"),String(i))}><strong>{txt(get(r,"role_name","ROLE_NAME"))}</strong><Pill>{txt(get(r,"role_code","ROLE_CODE"))}</Pill><p>{txt(get(r,"description","DESCRIPTION"),"No description")}</p><small>{((get(r,"permissions") as unknown[])||[]).length} permissions</small></div>)}</div></Card><Card wide><h2>Permission catalogue</h2><div className="perms">{permissions.map((p,i)=><div key={txt(get(p,"permission_code","PERMISSION_CODE"),String(i))}><code>{txt(get(p,"permission_code","PERMISSION_CODE"))}</code><span>{txt(get(p,"description","DESCRIPTION"))}</span>{bool(get(p,"dangerous","DANGEROUS"))&&<Pill tone="warn">Sensitive</Pill>}</div>)}</div></Card></div>{add&&<UserModal token={token} roles={roles} onClose={()=>setAdd(false)} onDone={()=>{setAdd(false);setNonce(x=>x+1)}}/>}{edit&&<UserModal token={token} roles={roles} user={edit} onClose={()=>setEdit(null)} onDone={()=>{setEdit(null);setNonce(x=>x+1)}}/>}</>}
 function UserModal({token,roles,user,onClose,onDone}:{token:Token;roles:Obj[];user?:Obj;onClose:()=>void;onDone:()=>void}){const[email,setEmail]=useState(txt(user&&get(user,"email","EMAIL"),"")),[name,setName]=useState(txt(user&&get(user,"display_name","DISPLAY_NAME"),"")),[selected,setSelected]=useState<string[]>((user&&get(user,"roles") as string[])||["VIEWER"]),[saving,setSaving]=useState(false),[error,setError]=useState<unknown>(null);const codes=roles.filter(r=>get(r,"active","ACTIVE")!==false).map(r=>txt(get(r,"role_code","ROLE_CODE")));async function save(){setSaving(true);try{if(!user)await api(token,"/api/admin/users",{method:"POST",body:JSON.stringify({email,displayName:name,roles:selected})});else{const id=txt(get(user,"admin_user_id","ADMIN_USER_ID"));await api(token,`/api/admin/users/${id}`,{method:"PATCH",body:JSON.stringify({displayName:name})});await api(token,`/api/admin/users/${id}/roles`,{method:"PUT",body:JSON.stringify({roles:selected})})}onDone()}catch(e){setError(e)}finally{setSaving(false)}}return <Modal title={user?"Edit staff user":"Add staff user"} onClose={onClose}><div className="form"><Field label="Email"><input className="input" disabled={!!user} value={email} onChange={e=>setEmail(e.target.value)}/></Field><Field label="Display name"><input className="input" value={name} onChange={e=>setName(e.target.value)}/></Field><fieldset><legend>DYNETIC roles</legend>{codes.map(c=><label key={c} className="check"><input type="checkbox" checked={selected.includes(c)} onChange={e=>setSelected(x=>e.target.checked?[...x,c]:x.filter(v=>v!==c))}/>{c}</label>)}</fieldset>{error?<ErrorBox error={error}/>:null}<div className="actions"><Button kind="ghost" onClick={onClose}>Cancel</Button><Button disabled={saving||!email} onClick={()=>void save()}>{saving?"Saving...":"Save"}</Button></div></div></Modal>}
 

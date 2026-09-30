@@ -1,6 +1,7 @@
 CREATE TABLE IF NOT EXISTS interface.ORDER_HEADER_IF (
     INTERFACE_ID         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     CLIENT_ID            varchar(10) NOT NULL,
+    SITE_ID              varchar(30) NOT NULL REFERENCES core.SITE(SITE_ID),
     SOURCE_SYSTEM        varchar(50) NOT NULL,
     SOURCE_ORDER_ID      varchar(100) NOT NULL,
     ORDER_ID             varchar(20),

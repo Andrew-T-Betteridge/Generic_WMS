@@ -10,7 +10,7 @@ import { EntityReference } from "../exceptions/ExceptionsPage";
 
 // Presents GET /api/admin/operations/dashboard as returned. Every figure below
 // is computed by the WMS service; nothing is re-aggregated in the browser.
-type Dashboard = { summary?: Obj; topExceptions?: Obj[] };
+type Dashboard = { summary?: Obj; topExceptions?: Obj[]; outstandingOrders?: Obj[] };
 
 export function ControlCentre({ token, has, environment }: { token: Token; has: HasPermission; environment: string }) {
   const ops = useApi(() => api<Dashboard>(token, "/api/admin/operations/dashboard"), "ops");
@@ -54,8 +54,8 @@ export function ControlCentre({ token, has, environment }: { token: Token; has: 
               <MetricCard label="Open returns & claims" value={n("open_cases")} tone={n("open_cases") ? "warn" : "neutral"} to={link("/returns", has("return.read"), "Returns")} />
             </MetricGroup>
             <MetricGroup label="Today">
-              <MetricCard label="Orders" value={n("orders_today")} to={link("/orders", has("order.read"), "Orders")} />
-              <MetricCard label="Paid revenue" value={money(field(summary, "revenue_today"))} />
+              <MetricCard label="Outstanding orders" value={n("outstanding_orders")} to={link("/orders?fulfilmentStatuses=UNALLOCATED,RESERVED,PART_ALLOCATED,ALLOCATED,PICKING,PART_PICKED,PICKED,PACKED", has("order.read"), "Orders")} />
+              <MetricCard label="Payment exceptions" value={n("payment_attention")} tone={n("payment_attention") ? "warn" : "neutral"} to={link("/orders?payment=PENDING", has("order.read"), "Orders")} />
             </MetricGroup>
           </div>
           <div className="ui-grid-main">

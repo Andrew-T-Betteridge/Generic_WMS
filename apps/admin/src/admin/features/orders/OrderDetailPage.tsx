@@ -22,7 +22,7 @@ export function actionAvailable(action: BackendAction | undefined, has: HasPermi
 
 type Detail = {
   order?: Obj; lines?: Obj[]; allocations?: Obj[]; picks?: Obj[]; containers?: Obj[];
-  shipmentManifest?: Obj[]; payments?: Obj[]; notes?: Obj[]; audit?: Obj[]; notifications?: Obj[];
+  shipmentManifest?: Obj[]; payments?: Obj[]; notes?: Obj[]; audit?: Obj[]; notifications?: Obj[]; returns?: Obj[];
 };
 
 const COMMANDS = [
@@ -146,6 +146,7 @@ export function OrderDetailPage({ token, has }: { token: Token; has: HasPermissi
               { id: "notes", label: "Notes", count: notes.length },
               { id: "audit", label: "Audit history", count: audit.length },
               { id: "notifications", label: "Notifications", count: (detail.notifications ?? []).length },
+              { id: "returns", label: "Returns / claims", count: (detail.returns ?? []).length },
             ]} />
             {activityTab === "notes" && (notes.length ? (
               <ol className="ui-feed ui-panel-body">
@@ -170,11 +171,17 @@ export function OrderDetailPage({ token, has }: { token: Token; has: HasPermissi
               </ol>
             ) : <EmptyState title="No audit events recorded" />)}
             {activityTab === "notifications" && <RecordTable title="Notifications" rows={detail.notifications} />}
+            {activityTab === "returns" && <RecordTable title="Returns / claims" rows={detail.returns} />}
           </Panel>
         </div>
 
         <section className="ui-stack" aria-label="Order context">
           <Panel title="Customer">
+            {(fieldText(order, "customer_id", "") || fieldText(order, "contact_email", "")) && (
+              <div className="ui-panel-body" style={{ paddingBottom: 0 }}>
+                <Link to={`/customers?customer=${encodeURIComponent(fieldText(order, "customer_id", fieldText(order, "contact_email", "")))}`} className="btn ghost">Open customer</Link>
+              </div>
+            )}
             <KeyValues items={[
               ["Name", fieldText(order, "name", fieldText(order, "contact", ""))],
               ["Email", fieldText(order, "contact_email", "")],
@@ -183,6 +190,9 @@ export function OrderDetailPage({ token, has }: { token: Token; has: HasPermissi
             ]} />
           </Panel>
           <Panel title="Delivery">
+            <div className="ui-panel-body" style={{ paddingBottom: 8 }}>
+              <Link to={`/fulfilment?orderId=${encodeURIComponent(orderId)}`} className="btn ghost">Open fulfilment</Link>
+            </div>
             <address className="ui-address">
               {["address1", "address2", "town", "county", "postcode", "country"].map((k) => fieldText(order, k, "")).filter(Boolean).map((l, i) => <span key={i}>{l}</span>)}
             </address>
@@ -195,6 +205,11 @@ export function OrderDetailPage({ token, has }: { token: Token; has: HasPermissi
             </div>
           </Panel>
           <Panel title="Payments" count={(detail.payments ?? []).length} flush>
+            {(detail.payments ?? []).length > 0 && (
+              <div className="ui-panel-body" style={{ paddingBottom: 0 }}>
+                <Link to={`/payments?q=${encodeURIComponent(orderId)}`} className="btn ghost">Open payment workbench</Link>
+              </div>
+            )}
             <RecordTable title="Payments" rows={detail.payments} />
           </Panel>
         </section>

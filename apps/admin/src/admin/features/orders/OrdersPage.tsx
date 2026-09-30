@@ -12,7 +12,16 @@ import { StatusBadge, toneFor } from "../../ui/StatusBadge";
 //   q (order ID / customer ID / email, partial), paymentStatus, fulfilmentStatus, limit, offset.
 // The option lists are the values the previous Admin already offered.
 export const PAYMENT_STATUSES = ["PAID", "PENDING", "AUTHORISED", "PART_REFUNDED", "REFUNDED", "FAILED"];
-export const FULFILMENT_STATUSES = ["UNALLOCATED", "RESERVED", "PART_ALLOCATED", "ALLOCATED", "PICKING", "PACKED", "SHIPPED", "DELIVERED", "CANCELLED"];
+export const FULFILMENT_STATUSES = ["UNALLOCATED", "RESERVED", "PART_ALLOCATED", "ALLOCATED", "PICKING", "PART_PICKED", "PICKED", "PACKED", "SHIPPED", "DELIVERED", "CANCELLED"];
+const OPEN_STATUSES = ["UNALLOCATED","RESERVED","PART_ALLOCATED","ALLOCATED","PICKING","PART_PICKED","PICKED","PACKED"];
+const ORDER_PRESETS: Record<string,string[]> = {
+  OPEN: OPEN_STATUSES,
+  READY_TO_PICK: ["ALLOCATED"],
+  IN_PROGRESS: ["PICKING","PART_PICKED","PICKED","PACKED"],
+  COMPLETED: ["SHIPPED","DELIVERED"],
+  CANCELLED: ["CANCELLED"],
+  ALL: []
+};
 export const ORDERS_PAGE_SIZE = 50;
 
 export function orderPath(orderId: string) {
@@ -24,7 +33,9 @@ export function OrdersPage({ token }: { token: Token }) {
   const navigate = useNavigate();
   const q = params.get("q") ?? "";
   const payment = params.get("payment") ?? "";
-  const fulfilment = params.get("fulfilment") ?? "";
+  const fulfilmentRaw = params.get("fulfilmentStatuses") ?? params.get("fulfilment") ?? "";
+  const fulfilmentStatuses = fulfilmentRaw ? fulfilmentRaw.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean) : OPEN_STATUSES;
+  const fulfilmentKey = fulfilmentStatuses.join(",");
   const page = Math.max(0, Number(params.get("page") ?? 0) || 0);
   const [draft, setDraft] = useState(q);
 
@@ -48,13 +59,13 @@ export function OrdersPage({ token }: { token: Token }) {
   const path = "/api/admin/orders" + query({
     q: q || undefined,
     paymentStatus: payment || undefined,
-    fulfilmentStatus: fulfilment || undefined,
+    fulfilmentStatuses: fulfilmentStatuses.length ? fulfilmentKey : undefined,
     limit: ORDERS_PAGE_SIZE,
     offset: page * ORDERS_PAGE_SIZE || undefined,
   });
   const { data, error, loading, reload } = useApi(() => api<Obj[]>(token, path), path);
   const rows = data ?? [];
-  const filtered = !!(q || payment || fulfilment);
+  const filtered = !!(q || payment || fulfilmentKey);
 
   const columns: Column<Obj>[] = [
     {
@@ -106,13 +117,36 @@ export function OrdersPage({ token }: { token: Token }) {
               {PAYMENT_STATUSES.map((s) => <option key={s} value={s}>{s.replaceAll("_", " ")}</option>)}
             </select>
           </label>
-          <label className="ui-field">
-            <span>Fulfilment</span>
-            <select className="input" aria-label="Fulfilment status" value={fulfilment} onChange={(e) => update({ fulfilment: e.target.value })}>
-              <option value="">Any</option>
-              {FULFILMENT_STATUSES.map((s) => <option key={s} value={s}>{s.replaceAll("_", " ")}</option>)}
-            </select>
-          </label>
+          <div className="ui-filter-group">
+  <span>Fulfilment</span>
+  <div className="toolbar" style={{gap:6,flexWrap:"wrap"}}>
+    {Object.entries(ORDER_PRESETS).map(([name,statuses])=>{
+      const active=statuses.length===fulfilmentStatuses.length&&statuses.every((s)=>fulfilmentStatuses.includes(s));
+      return <button
+        key={name}
+        type="button"
+        className={`btn ${active?"btn-primary":"btn-ghost"}`}
+        onClick={()=>update({fulfilmentStatuses:statuses.join(",")})}
+      >{name.replaceAll("_"," ")}</button>;
+    })}
+  </div>
+  <div className="toolbar" style={{gap:8,flexWrap:"wrap"}}>
+    {FULFILMENT_STATUSES.map((status)=>{
+      const checked=fulfilmentStatuses.includes(status);
+      return <label key={status} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:12}}>
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={()=>{
+            const next=checked?fulfilmentStatuses.filter((s)=>s!==status):[...fulfilmentStatuses,status];
+            update({fulfilmentStatuses:next.join(",")});
+          }}
+        />
+        {status.replaceAll("_"," ")}
+      </label>;
+    })}
+  </div>
+</div>
           {filtered && <button type="button" className="btn ghost ui-clear" onClick={() => { setDraft(""); setParams(new URLSearchParams()); }}>Clear all</button>}
         </form>
         {!error && (
@@ -120,7 +154,7 @@ export function OrdersPage({ token }: { token: Token }) {
             {loading ? <span>Loading orders…</span> : <span><strong>{rows.length ? `${page * ORDERS_PAGE_SIZE + 1}–${page * ORDERS_PAGE_SIZE + rows.length}` : "0"}</strong> {rows.length === 1 ? "order" : "orders"}{rows.length === ORDERS_PAGE_SIZE ? " on this page" : ""}</span>}
             {q && <FilterTag label={`Search: ${q}`} onRemove={() => { setDraft(""); update({ q: "" }); }} />}
             {payment && <FilterTag label={`Payment: ${payment.replaceAll("_", " ")}`} onRemove={() => update({ payment: "" })} />}
-            {fulfilment && <FilterTag label={`Fulfilment: ${fulfilment.replaceAll("_", " ")}`} onRemove={() => update({ fulfilment: "" })} />}
+            {fulfilmentStatuses.length > 0 && <FilterTag label={`Fulfilment: ${fulfilmentStatuses.join(", ").replaceAll("_", " ")}`} onRemove={() => update({ fulfilmentStatuses: "" })} />}
           </div>
         )}
         {error ? <ErrorState error={error} onRetry={reload} />

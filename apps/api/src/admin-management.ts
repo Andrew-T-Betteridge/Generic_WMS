@@ -78,6 +78,30 @@ export function registerAdminManagementRoutes(
     }
   });
 
+  app.get("/api/admin/product-categories", async (req, reply) => {
+    try {
+      await requirePermission(req, clientId, "product.read");
+
+      const result = await db.query(
+        `select
+            CATEGORY_CODE,
+            CATEGORY_NAME,
+            PARENT_CATEGORY_CODE,
+            SLUG,
+            SORT_SEQUENCE
+           from core.PRODUCT_CATEGORY
+          where CLIENT_ID=$1
+            and ACTIVE=true
+          order by SORT_SEQUENCE,CATEGORY_NAME`,
+        [clientId],
+      );
+
+      return result.rows;
+    } catch (e) {
+      return sendError(reply, e);
+    }
+  });
+
   app.get("/api/admin/products", async (req, reply) => {
     try {
       await requirePermission(req, clientId, "product.read");
