@@ -348,3 +348,12 @@ Before committing a release:
 - Existing migration 0037 is not rewritten; 0040 is a forward-only privilege extension.
 - Regression 037 validates the item-level RETURN_CASE_LINE schema contract and required runtime privileges.
 - API 0.3.18 must not be deployed before migrations 0038, 0039 and 0040 have been validated in preflight and included in the production deployment plan.
+
+### 0.3.18 release metadata completion
+
+- API package version is 0.3.18 and must match the immutable dynetic-wms-v0.3.18 release tag.
+- Migration 0041 registers DYNETIC WMS 0.3.18 as the current database system version.
+- Production release manifest is 0038 -> 0039 -> 0040 -> 0041.
+- Fresh-install manifest includes runtime privilege migrations 0036/0037 and the complete 0.3.18 migration chain.
+- Regression 038 validates the final 0.3.18 release/version contract.
+- No immutable 0.3.18 tag is created until disposable database preflight succeeds.

@@ -1,11 +1,16 @@
-# DYNETIC WMS 0.3.15 release manifest
-# Hotfix upgrade from the validated 0.3.14 production database baseline.
+# DYNETIC WMS 0.3.18 release manifest
+# Upgrade from the validated DYNETIC WMS 0.3.15 production baseline.
 #
 # Release contents:
-# - remove duplicate Fastify GET /api/admin/audit registration;
-# - require a real API process startup in the canonical TEST gate;
-# - register DYNETIC WMS 0.3.15.
+# - independent CLIENT and SITE masters plus CLIENT/SITE applicability;
+# - CLIENT + SITE operational scoping and authoritative order numbering;
+# - persisted return/claim idempotency;
+# - Admin return/claim runtime privileges;
+# - DYNETIC WMS 0.3.18 system-version registration.
 #
-# Tests, fixtures, smoke/load scripts are deliberately absent.
+# Regression tests are deliberately not part of the production manifest.
 
-database/migrations/0035_dynetic_wms_0_3_15.sql
+database/migrations/0038_multi_site_order_foundation.sql
+database/migrations/0039_return_refund_idempotency_hardening.sql
+database/migrations/0040_admin_return_case_runtime_privileges.sql
+database/migrations/0041_dynetic_wms_0_3_18.sql

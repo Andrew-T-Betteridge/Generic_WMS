@@ -4,9 +4,10 @@ DO $dynetic_test_guard$
 DECLARE
     v_database text := current_database();
 BEGIN
-    IF v_database NOT IN ('fulfilment_dev', 'fulfilment_test') THEN
+    IF v_database NOT IN ('fulfilment_dev', 'fulfilment_test')
+       AND v_database NOT LIKE 'fulfilment_preflight_%' THEN
         RAISE EXCEPTION
-            'SAFETY STOP: admin workbench privilege regression may only run against fulfilment_dev or fulfilment_test; current database is "%".',
+            'SAFETY STOP: admin workbench privilege regression may only run against fulfilment_dev, fulfilment_test or fulfilment_preflight_*; current database is "%".',
             v_database;
     END IF;
 

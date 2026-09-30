@@ -31,3 +31,9 @@ database/migrations/0032_admin_operations_control_plane.sql
 database/migrations/0033_admin_operations_rbac_sync.sql
 database/migrations/0034_dynetic_wms_0_3_14.sql
 database/migrations/0035_dynetic_wms_0_3_15.sql
+database/migrations/0036_admin_workbench_runtime_privileges.sql
+database/migrations/0037_admin_control_plane_runtime_privileges.sql
+database/migrations/0038_multi_site_order_foundation.sql
+database/migrations/0039_return_refund_idempotency_hardening.sql
+database/migrations/0040_admin_return_case_runtime_privileges.sql
+database/migrations/0041_dynetic_wms_0_3_18.sql

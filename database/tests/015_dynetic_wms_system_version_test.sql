@@ -5,7 +5,8 @@ DO $dynetic_test_guard$
 DECLARE
     v_database text := current_database();
 BEGIN
-    IF v_database NOT IN ('fulfilment_dev', 'fulfilment_test') THEN
+    IF v_database NOT IN ('fulfilment_dev', 'fulfilment_test')
+       AND v_database NOT LIKE 'fulfilment_preflight_%' THEN
         RAISE EXCEPTION
             'SAFETY STOP: database test execution is forbidden against database "%". Only fulfilment_dev and fulfilment_test are allowed.',
             v_database;
@@ -28,10 +29,10 @@ BEGIN
       INTO v_count
       FROM config.SYSTEM_VERSION
      WHERE PRODUCT_CODE='DYNETIC_WMS'
-       AND VERSION_NUMBER='0.3.15';
+       AND VERSION_NUMBER='0.3.18';
 
     IF v_count<>1 THEN
-        RAISE EXCEPTION 'Expected DYNETIC WMS version 0.3.15 exactly once; got %.',v_count;
+        RAISE EXCEPTION 'Expected DYNETIC WMS version 0.3.18 exactly once; got %.',v_count;
     END IF;
 
     SELECT COUNT(*)
@@ -50,7 +51,7 @@ BEGIN
         RAISE EXCEPTION 'Unexpected product name: %',v_info;
     END IF;
 
-    IF v_info->>'version'<>'0.3.15' THEN
+    IF v_info->>'version'<>'0.3.18' THEN
         RAISE EXCEPTION 'Unexpected current version: %',v_info;
     END IF;
 
