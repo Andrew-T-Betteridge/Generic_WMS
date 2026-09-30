@@ -357,3 +357,12 @@ Before committing a release:
 - Fresh-install manifest includes runtime privilege migrations 0036/0037 and the complete 0.3.18 migration chain.
 - Regression 038 validates the final 0.3.18 release/version contract.
 - No immutable 0.3.18 tag is created until disposable database preflight succeeds.
+
+### 0.3.18 legacy SITE migration preflight fix
+
+- Disposable database preflight exposed a real 0038 upgrade-order defect from the 0.3.14/0.3.15 SITE schema.
+- Legacy core.SITE still carries CLIENT_ID NOT NULL before the 0.3.18 migration.
+- 0038 now creates CLIENT_SITE and preserves SITE/CLIENT applicability before dropping SITE.CLIENT_ID.
+- Only after ownership is removed does 0038 bootstrap missing independent SITE masters from LOCATION/INVENTORY evidence.
+- No dummy client, hard-coded FINatics client or global HQ fallback is introduced.
+- The failed 0038 preflight transaction rolled back and production was not referenced or modified.

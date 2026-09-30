@@ -14,19 +14,104 @@
 BEGIN;
 
 -- ---------------------------------------------------------------------------
--- 1. SITE master bootstrap and CLIENT/SITE applicability
+-- 1. CLIENT/SITE transition and independent SITE master bootstrap
 -- ---------------------------------------------------------------------------
 
--- Legacy installations may already contain SITE_ID on operational records
--- while core.SITE itself is empty. Recover those masters from existing
--- operational evidence rather than inventing a site such as HQ.
---
--- This is intentionally generic:
---   * no client name is hard-coded;
---   * a SITE_ID is recovered from existing LOCATION/INVENTORY evidence;
---   * conflicting evidence fails visibly;
---   * SITE remains an independent master.
+-- Create applicability while the legacy SITE.CLIENT_ID relationship still
+-- exists. SITE becomes independent only after that relationship is preserved.
+CREATE TABLE IF NOT EXISTS config.CLIENT_SITE (
+    CLIENT_ID           varchar(30) NOT NULL REFERENCES core.CLIENT(CLIENT_ID),
+    SITE_ID             varchar(30) NOT NULL REFERENCES core.SITE(SITE_ID),
+    ACTIVE              boolean NOT NULL DEFAULT true,
+    DEFAULT_FULFILMENT  boolean NOT NULL DEFAULT false,
+    CREATED_DSTAMP      timestamptz NOT NULL DEFAULT now(),
+    LAST_UPDATE_DSTAMP  timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (CLIENT_ID, SITE_ID)
+);
 
+COMMENT ON TABLE config.CLIENT_SITE IS
+'Operational applicability between independent CLIENT and SITE masters.';
+
+COMMENT ON COLUMN config.CLIENT_SITE.DEFAULT_FULFILMENT IS
+'Default fulfilment site for a client when an inbound channel does not explicitly resolve a site.';
+
+-- Preserve the legacy SITE -> CLIENT relationship BEFORE removing CLIENT_ID.
+-- Dynamic SQL keeps the migration rerunnable after the legacy column is gone.
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+          FROM information_schema.columns
+         WHERE table_schema='core'
+           AND table_name='site'
+           AND column_name='client_id'
+    ) THEN
+        EXECUTE $sql$
+            INSERT INTO config.CLIENT_SITE (
+                CLIENT_ID,
+                SITE_ID,
+                ACTIVE,
+                DEFAULT_FULFILMENT
+            )
+            SELECT
+                s.CLIENT_ID,
+                s.SITE_ID,
+                COALESCE(s.ACTIVE,true),
+                false
+              FROM core.SITE s
+             WHERE s.CLIENT_ID IS NOT NULL
+               AND BTRIM(s.CLIENT_ID) <> ''
+            ON CONFLICT (CLIENT_ID,SITE_ID)
+            DO UPDATE
+               SET ACTIVE=EXCLUDED.ACTIVE,
+                   LAST_UPDATE_DSTAMP=now()
+        $sql$;
+    END IF;
+END;
+$$;
+
+-- Prove every legacy ownership relationship is represented as applicability
+-- before the ownership column is removed.
+DO $$
+DECLARE
+    v_missing integer;
+BEGIN
+    IF EXISTS (
+        SELECT 1
+          FROM information_schema.columns
+         WHERE table_schema='core'
+           AND table_name='site'
+           AND column_name='client_id'
+    ) THEN
+        EXECUTE $sql$
+            SELECT COUNT(*)
+              FROM core.SITE s
+              LEFT JOIN config.CLIENT_SITE cs
+                ON cs.CLIENT_ID=s.CLIENT_ID
+               AND cs.SITE_ID=s.SITE_ID
+             WHERE s.CLIENT_ID IS NOT NULL
+               AND BTRIM(s.CLIENT_ID) <> ''
+               AND cs.CLIENT_ID IS NULL
+        $sql$
+        INTO v_missing;
+
+        IF v_missing <> 0 THEN
+            RAISE EXCEPTION
+              'CLIENT_SITE_MIGRATION_FAILED: % legacy SITE/CLIENT relationships were not preserved',
+              v_missing;
+        END IF;
+    END IF;
+END;
+$$;
+
+-- SITE now becomes a genuinely independent physical/logical master.
+-- No CASCADE: unexpected dependencies must fail visibly.
+ALTER TABLE core.SITE
+    DROP COLUMN IF EXISTS CLIENT_ID;
+
+-- Legacy installations may contain SITE_ID values on LOCATION or INVENTORY
+-- which do not yet have a SITE master row. Now that CLIENT_ID ownership has
+-- been removed, recover those independent SITE masters from existing evidence.
 DO $$
 DECLARE
     v_site_id varchar(30);
@@ -69,7 +154,7 @@ BEGIN
 END;
 $$;
 
--- Validate that every operational SITE_ID now has a master.
+-- Every operational SITE_ID must now resolve to an independent SITE master.
 DO $$
 DECLARE
     v_count integer;
@@ -98,25 +183,8 @@ BEGIN
 END;
 $$;
 
-CREATE TABLE IF NOT EXISTS config.CLIENT_SITE (
-    CLIENT_ID           varchar(30) NOT NULL REFERENCES core.CLIENT(CLIENT_ID),
-    SITE_ID             varchar(30) NOT NULL REFERENCES core.SITE(SITE_ID),
-    ACTIVE              boolean NOT NULL DEFAULT true,
-    DEFAULT_FULFILMENT  boolean NOT NULL DEFAULT false,
-    CREATED_DSTAMP      timestamptz NOT NULL DEFAULT now(),
-    LAST_UPDATE_DSTAMP  timestamptz NOT NULL DEFAULT now(),
-    PRIMARY KEY (CLIENT_ID, SITE_ID)
-);
-
-COMMENT ON TABLE config.CLIENT_SITE IS
-'Operational applicability between independent CLIENT and SITE masters.';
-
-COMMENT ON COLUMN config.CLIENT_SITE.DEFAULT_FULFILMENT IS
-'Default fulfilment site for a client when an inbound channel does not explicitly resolve a site.';
-
--- Recover CLIENT/SITE applicability from existing inventory evidence.
--- A client/site pair is established only where the operational records already
--- explicitly contain both values. This is applicability, not SITE ownership.
+-- Recover additional CLIENT/SITE applicability from explicit inventory evidence.
+-- This records applicability; it does not restore ownership on SITE.
 INSERT INTO config.CLIENT_SITE (
     CLIENT_ID,
     SITE_ID,
@@ -144,44 +212,7 @@ DO UPDATE
    SET ACTIVE=true,
        LAST_UPDATE_DSTAMP=now();
 
--- Preserve the legacy SITE -> CLIENT relationship BEFORE removing CLIENT_ID.
--- Dynamic SQL is required so this migration also remains rerunnable after the
--- legacy column has already been removed.
-DO $$
-BEGIN
-    IF EXISTS (
-        SELECT 1
-          FROM information_schema.columns
-         WHERE table_schema='core'
-           AND table_name='site'
-           AND column_name='client_id'
-    ) THEN
-        EXECUTE $sql$
-            INSERT INTO config.CLIENT_SITE (
-                CLIENT_ID,
-                SITE_ID,
-                ACTIVE,
-                DEFAULT_FULFILMENT
-            )
-            SELECT
-                s.CLIENT_ID,
-                s.SITE_ID,
-                COALESCE(s.ACTIVE,true),
-                false
-              FROM core.SITE s
-             WHERE s.CLIENT_ID IS NOT NULL
-               AND BTRIM(s.CLIENT_ID) <> ''
-            ON CONFLICT (CLIENT_ID,SITE_ID)
-            DO UPDATE
-               SET ACTIVE=EXCLUDED.ACTIVE,
-                   LAST_UPDATE_DSTAMP=now()
-        $sql$;
-    END IF;
-END;
-$$;
-
--- If a client has exactly one active applicable site, it is unambiguous and
--- can safely become that client's default fulfilment site.
+-- A single active applicable site is an unambiguous default.
 UPDATE config.CLIENT_SITE cs
    SET DEFAULT_FULFILMENT=true,
        LAST_UPDATE_DSTAMP=now()
@@ -197,45 +228,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_client_site_default_fulfilment
     ON config.CLIENT_SITE (CLIENT_ID)
     WHERE ACTIVE=true
       AND DEFAULT_FULFILMENT=true;
-
--- Every legacy SITE.CLIENT_ID relationship must have been preserved before
--- SITE ownership is removed.
-DO $$
-DECLARE
-    v_missing integer;
-BEGIN
-    IF EXISTS (
-        SELECT 1
-          FROM information_schema.columns
-         WHERE table_schema='core'
-           AND table_name='site'
-           AND column_name='client_id'
-    ) THEN
-        EXECUTE $sql$
-            SELECT COUNT(*)
-              FROM core.SITE s
-              LEFT JOIN config.CLIENT_SITE cs
-                ON cs.CLIENT_ID=s.CLIENT_ID
-               AND cs.SITE_ID=s.SITE_ID
-             WHERE s.CLIENT_ID IS NOT NULL
-               AND BTRIM(s.CLIENT_ID) <> ''
-               AND cs.CLIENT_ID IS NULL
-        $sql$
-        INTO v_missing;
-
-        IF v_missing <> 0 THEN
-            RAISE EXCEPTION
-              'CLIENT_SITE_MIGRATION_FAILED: % legacy SITE/CLIENT relationships were not preserved',
-              v_missing;
-        END IF;
-    END IF;
-END;
-$$;
-
--- SITE now becomes a genuinely independent master.
--- No CASCADE: unexpected external dependencies must fail visibly.
-ALTER TABLE core.SITE
-    DROP COLUMN IF EXISTS CLIENT_ID;
 
 -- ---------------------------------------------------------------------------
 -- 2. LOCATION site scope
