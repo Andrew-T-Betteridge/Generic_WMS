@@ -366,3 +366,20 @@ Before committing a release:
 - Only after ownership is removed does 0038 bootstrap missing independent SITE masters from LOCATION/INVENTORY evidence.
 - No dummy client, hard-coded FINatics client or global HQ fallback is introduced.
 - The failed 0038 preflight transaction rolled back and production was not referenced or modified.
+
+### 0.3.18 database preflight passed
+
+- Disposable 0.3.18 database upgrade preflight completed successfully on 2026-09-30.
+- Legacy baseline was upgraded through 0035, 0036, 0037, corrected 0038, 0039, 0040 and 0041.
+- Corrected 0038 preserved SITE/CLIENT applicability before removing legacy SITE.CLIENT_ID.
+- Database reported DYNETIC WMS 0.3.18.
+- Regressions 015, 030, 031, 032, 033 and 034 passed during the first database gate.
+- Regressions 035, 036, 037 and 038 passed during the final database gate.
+- SITE is an independent master and CLIENT_SITE applicability passed integrity validation.
+- ORDER_HEADER and INVENTORY contain valid active CLIENT/SITE applicability.
+- RETURN_CASE.OPERATION_ID and runtime privilege contracts passed.
+- Exactly one current DYNETIC_WMS system version remains.
+- No client has multiple active default fulfilment sites.
+- Disposable preflight database was dropped after successful validation.
+- Production database was not referenced or modified.
+- Final validated functional source commit: b528e9b9f0442d2a1e902e4e913f025ae2ca4f91.
