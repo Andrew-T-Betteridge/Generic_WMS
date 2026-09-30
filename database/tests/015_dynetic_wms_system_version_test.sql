@@ -57,7 +57,7 @@ BEGIN
 
     IF (v_info->>'major')::INTEGER<>0
        OR (v_info->>'minor')::INTEGER<>3
-       OR (v_info->>'patch')::INTEGER<>15 THEN
+       OR (v_info->>'patch')::INTEGER<>18 THEN
         RAISE EXCEPTION 'Unexpected semantic version components: %',v_info;
     END IF;
 
