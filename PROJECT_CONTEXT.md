@@ -383,3 +383,19 @@ Before committing a release:
 - Disposable preflight database was dropped after successful validation.
 - Production database was not referenced or modified.
 - Final validated functional source commit: b528e9b9f0442d2a1e902e4e913f025ae2ca4f91.
+
+### 0.3.18 production deployment complete
+
+- Immutable release: dynetic-wms-v0.3.18.
+- Release commit: f73197c7abaa01f06cc0bd74ec64b3c053649201.
+- Production database upgraded successfully to DYNETIC WMS 0.3.18.
+- Production migration set: 0038, 0039, 0040 and 0041.
+- No database regression tests or test fixtures were executed against production.
+- CLIENT/SITE order and inventory integrity checks returned zero invalid rows.
+- Production API runs from /opt/dynetic/releases/dynetic-wms-v0.3.18/apps/api.
+- Public and local API version/health checks passed.
+- Tagged 0.3.18 Admin bundle is live under the stable nginx Admin root.
+- FINatics storefront service remained active and was not deployed as part of the WMS release.
+- Systemd release selection was canonicalised to dynetic-api.service.d/release.conf pointing at 0.3.18.
+- Temporary competing 99-dynetic-release.conf and zzzz-dynetic-wms-0.3.18.conf overrides were removed after backup.
+- Pre-deployment and post-deployment backups are retained under /home/andrew/dynetic-backups/0.3.18.
