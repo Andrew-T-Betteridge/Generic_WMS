@@ -1,9 +1,9 @@
 # DYNETIC Generic WMS - Project Context
 
-**Last updated:** 2026-09-30
-**Current development target:** 0.3.18
-**Last reviewed against Git commit:** 9159de75d5196f57a0aca637eca918141318a2ee
-**Status:** Active development - 0.3.18 operational Admin expansion
+**Last updated:** 2026-10-01
+**Current development target:** 0.3.18.1 Admin maintenance on Generic WMS 0.3.18
+**Last reviewed against Git commit:** 43cea21cb621790506b20af42524289e4d297616
+**Status:** Production - Generic WMS 0.3.18 / FINatics Admin 0.3.18.1
 
 > IMPORTANT FOR FUTURE CHATGPT SESSIONS / DEVELOPERS
 >
@@ -235,8 +235,9 @@ Known Admin immutable releases:
 - finatics-admin-v0.3.15.2
 - finatics-admin-v0.3.16
 - finatics-admin-v0.3.17
+- finatics-admin-v0.3.18.1
 
-0.3.18 is currently a development target and must not be called an immutable release until the coherent package is validated and committed.
+Generic WMS 0.3.18 is an immutable production release. FINatics Admin 0.3.18.1 is an immutable Admin-only production release.
 
 ## 16. Working conventions for ChatGPT-assisted development
 
@@ -286,14 +287,15 @@ Generated diagnostics/captures should go to C:\Users\atbet\Downloads, not TEMP.
 
 ### FINatics Admin 0.3.18.1 production deployment
 
-- Production Admin release: inatics-admin-v0.3.18.1.
-- Immutable Admin release commit: 43cea21cb621790506b20af42524289e4d297616.
-- Fixes production browser Vite environment injection by using statically analyzable import.meta.env.VITE_* lookups.
-- Production build verified all six Vite values, including Auth0 domain/client configuration, without exposing those values in deployment logs.
-- Public Admin index and hashed JavaScript asset passed post-deployment smoke/runtime verification.
-- Underlying Generic WMS API/database remain on  .3.18; no database, API or storefront change was part of the Admin 0.3.18.1 deployment.
-- Rollback bundle was retained before activation of 0.3.18.1.
-
+- Production Admin release: `finatics-admin-v0.3.18.1`.
+- Immutable Admin release commit: `43cea21cb621790506b20af42524289e4d297616`.
+- Fixes production browser Vite environment injection by using statically analyzable `import.meta.env.VITE_*` lookups.
+- The live public hashed JavaScript bundle was verified to contain all six required production Vite values, including the Auth0 domain and client ID.
+- Auth0 values were verified without displaying their values in deployment or verification output.
+- Public Admin index and hashed JavaScript asset passed post-deployment smoke tests.
+- Underlying Generic WMS API and database remain on `0.3.18`.
+- No database, API or storefront deployment was part of Admin 0.3.18.1.
+- The previous live Admin distribution and a pre-0.3.18.1 rollback archive were retained.
 ## 18. Maintenance rule
 
 This file is part of the product.
