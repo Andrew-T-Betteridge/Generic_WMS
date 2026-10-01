@@ -283,6 +283,17 @@ Generated diagnostics/captures should go to C:\Users\atbet\Downloads, not TEMP.
 - Client/Site authorization and applicability consistency
 - Regression coverage for the above
 
+
+### FINatics Admin 0.3.18.1 production deployment
+
+- Production Admin release: inatics-admin-v0.3.18.1.
+- Immutable Admin release commit: 43cea21cb621790506b20af42524289e4d297616.
+- Fixes production browser Vite environment injection by using statically analyzable import.meta.env.VITE_* lookups.
+- Production build verified all six Vite values, including Auth0 domain/client configuration, without exposing those values in deployment logs.
+- Public Admin index and hashed JavaScript asset passed post-deployment smoke/runtime verification.
+- Underlying Generic WMS API/database remain on  .3.18; no database, API or storefront change was part of the Admin 0.3.18.1 deployment.
+- Rollback bundle was retained before activation of 0.3.18.1.
+
 ## 18. Maintenance rule
 
 This file is part of the product.
