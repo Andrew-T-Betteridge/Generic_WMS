@@ -6,10 +6,10 @@ DECLARE
 BEGIN
     IF v_database NOT IN ('fulfilment_dev', 'fulfilment_test') THEN
         RAISE EXCEPTION
-            'SAFETY STOP: 0.3.15 admin operations regression may only run against fulfilment_dev or fulfilment_test; current database is "%".',
+            'SAFETY STOP: admin operations control-plane regression may only run against fulfilment_dev or fulfilment_test; current database is "%".',
             v_database;
     END IF;
-    RAISE NOTICE 'SAFETY: 0.3.15 admin operations regression verified database %', v_database;
+    RAISE NOTICE 'SAFETY: admin operations control-plane regression verified database %', v_database;
 END
 $dynetic_test_guard$;
 
@@ -18,6 +18,7 @@ BEGIN;
 DO $test$
 DECLARE
     v_version text;
+    v_config_version text;
     v_current integer;
     v_missing_owner integer;
     v_permission_count integer;
@@ -26,12 +27,12 @@ BEGIN
     SELECT api.GET_SYSTEM_VERSION()->>'version'
       INTO v_version;
 
-    IF v_version <> '0.3.15' THEN
-        RAISE EXCEPTION 'Expected version 0.3.15, got %', v_version;
+    IF NULLIF(btrim(v_version),'') IS NULL THEN
+        RAISE EXCEPTION 'GET_SYSTEM_VERSION returned no current DYNETIC WMS version';
     END IF;
 
-    SELECT count(*)
-      INTO v_current
+    SELECT count(*), max(VERSION_NUMBER)
+      INTO v_current, v_config_version
       FROM config.SYSTEM_VERSION
      WHERE PRODUCT_CODE='DYNETIC_WMS'
        AND IS_CURRENT=true;
@@ -40,12 +41,18 @@ BEGIN
         RAISE EXCEPTION 'Expected exactly one current DYNETIC version, got %', v_current;
     END IF;
 
+    IF v_config_version IS DISTINCT FROM v_version THEN
+        RAISE EXCEPTION
+            'GET_SYSTEM_VERSION version % does not match current config.SYSTEM_VERSION %',
+            v_version, v_config_version;
+    END IF;
+
     IF to_regclass('core.return_case') IS NULL
        OR to_regclass('core.payment_refund') IS NULL
        OR to_regclass('core.gift_card_transaction') IS NULL
        OR to_regclass('core.inventory_count') IS NULL
        OR to_regclass('audit.admin_action_attempt') IS NULL THEN
-        RAISE EXCEPTION 'One or more 0.3.15 operational tables are missing.';
+        RAISE EXCEPTION 'One or more required admin operational tables are missing.';
     END IF;
 
     IF to_regclass('core.admin_order_control_workbench') IS NULL
@@ -101,7 +108,7 @@ BEGIN
         RAISE EXCEPTION 'Expected at least 20 FINATICS admin reason codes, got %', v_reason_count;
     END IF;
 
-    RAISE NOTICE 'PASS: DYNETIC WMS 0.3.15 admin operations regression verified.';
+    RAISE NOTICE 'PASS: DYNETIC WMS admin operations control-plane regression verified.';
 END
 $test$;
 

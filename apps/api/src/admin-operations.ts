@@ -92,14 +92,19 @@ app.get("/api/admin/operations/dashboard",async(req,reply)=>{
   app.get("/api/admin/orders",async(req,reply)=>{
     try{
       await requirePermission(req,clientId,"order.read");
-      const q=req.query as any; const x=String(q.q??"").trim()||null;
+      const q=req.query as any;
+      const x=String(q.q??"").trim()||null;
+      const fulfilmentStatuses=String(q.fulfilmentStatuses??q.fulfilmentStatus??"")
+        .split(",")
+        .map((v:string)=>v.trim().toUpperCase())
+        .filter(Boolean);
       const r=await db.query(`select * from core.ADMIN_ORDER_CONTROL_WORKBENCH
        where CLIENT_ID=$1
        and ($2::text is null or ORDER_ID ilike '%'||$2||'%' or CUSTOMER_ID ilike '%'||$2||'%' or CONTACT_EMAIL ilike '%'||$2||'%')
        and ($3::text is null or PAYMENT_STATUS=$3)
-       and ($4::text is null or FULFILMENT_STATUS=$4)
+       and ($4::text[] is null or FULFILMENT_STATUS=any($4::text[]))
        order by ORDER_DATE desc limit $5 offset $6`,
-       [clientId,x,q.paymentStatus?.toUpperCase()??null,q.fulfilmentStatus?.toUpperCase()??null,lim(q.limit),off(q.offset)]);
+       [clientId,x,q.paymentStatus?.toUpperCase()??null,fulfilmentStatuses.length?fulfilmentStatuses:null,lim(q.limit),off(q.offset)]);
       return r.rows;
     }catch(e){return sendError(reply,e);}
   });
@@ -209,162 +214,183 @@ app.get("/api/admin/operations/dashboard",async(req,reply)=>{
 
   // Customer operational projection derived from authoritative order history.
   app.get("/api/admin/customers", async (req, reply) => {
-    await requirePermission(req, clientId, "order.read");
+    try {
+      await requirePermission(req, clientId, "order.read");
 
-    const query = req.query as {
-      q?: string;
-      siteId?: string;
-      limit?: string;
-      offset?: string;
-    };
+      const query = req.query as {
+        q?: string;
+        siteId?: string;
+        limit?: string;
+        offset?: string;
+      };
 
-    const q = String(query.q ?? "").trim();
-    const siteId = String(query.siteId ?? "").trim() || null;
-    const limit = Math.min(Math.max(Number(query.limit ?? 50) || 50, 1), 200);
-    const offset = Math.max(Number(query.offset ?? 0) || 0, 0);
+      const search = String(query.q ?? "").trim();
+      const siteId = String(query.siteId ?? "").trim() || null;
+      const limit = Math.min(Math.max(Number(query.limit ?? 50) || 50, 1), 200);
+      const offset = Math.max(Number(query.offset ?? 0) || 0, 0);
 
-    if (siteId) {
-      const allowed = await db.query(
-        `select 1
-           from config.CLIENT_SITE
+      if (siteId) {
+        const allowed = await db.query(
+          `select 1
+             from config.CLIENT_SITE
+            where CLIENT_ID=$1
+              and SITE_ID=$2
+              and ACTIVE=true`,
+          [clientId, siteId],
+        );
+
+        if (!allowed.rowCount)
+          return reply.code(403).send({ error: "SITE_NOT_AUTHORISED" });
+      }
+
+      const result = await db.query(
+        `with customer_orders as (
+           select
+             nullif(trim(CUSTOMER_ID),'') as customer_id,
+             nullif(trim(CONTACT_EMAIL),'') as email,
+             coalesce(
+               nullif(trim(CONTACT_PHONE),''),
+               nullif(trim(CONTACT_MOBILE),'')
+             ) as phone,
+             coalesce(
+               nullif(trim(NAME),''),
+               nullif(trim(CONTACT),'')
+             ) as customer_name,
+             ORDER_ID,
+             SITE_ID,
+             STATUS,
+             ORDER_VALUE,
+             ORDER_DATE
+           from core.ORDER_HEADER
           where CLIENT_ID=$1
-            and SITE_ID=$2
-            and ACTIVE=true`,
-        [clientId, siteId],
+            and ($2::varchar is null or SITE_ID=$2)
+         ),
+         grouped as (
+           select
+             coalesce(
+               customer_id,
+               lower(email),
+               lower(customer_name) || ':' || coalesce(phone,'')
+             ) as customer_key,
+             max(customer_id) as customer_id,
+             max(email) as email,
+             max(phone) as phone,
+             max(customer_name) as customer_name,
+             count(*)::integer as order_count,
+             count(*) filter (
+               where coalesce(STATUS,'') not in ('SHIPPED','DELIVERED','CANCELLED')
+             )::integer as open_order_count,
+             coalesce(sum(ORDER_VALUE),0) as total_value,
+             max(ORDER_DATE) as last_order_date,
+             (array_agg(ORDER_ID order by ORDER_DATE desc))[1] as last_order_id
+           from customer_orders
+          where customer_id is not null
+             or email is not null
+             or customer_name is not null
+          group by coalesce(
+            customer_id,
+            lower(email),
+            lower(customer_name) || ':' || coalesce(phone,'')
+          )
+         )
+         select *
+           from grouped
+          where $3=''
+             or coalesce(customer_id,'') ilike '%' || $3 || '%'
+             or coalesce(email,'') ilike '%' || $3 || '%'
+             or coalesce(phone,'') ilike '%' || $3 || '%'
+             or coalesce(customer_name,'') ilike '%' || $3 || '%'
+          order by last_order_date desc nulls last
+          limit $4 offset $5`,
+        [clientId, siteId, search, limit, offset],
       );
 
-      if (!allowed.rowCount)
-        return reply.code(403).send({ error: "SITE_NOT_AUTHORISED" });
+      return result.rows;
+    } catch (e) {
+      return sendError(reply, e);
     }
-
-    const result = await db.query(
-      `with customer_orders as (
-         select
-           nullif(trim(CUSTOMER_ID),'') as customer_id,
-           nullif(trim(CUSTOMER_EMAIL),'') as email,
-           nullif(trim(CUSTOMER_PHONE),'') as phone,
-           nullif(trim(
-             concat_ws(' ',
-               nullif(trim(CUSTOMER_FIRST_NAME),''),
-               nullif(trim(CUSTOMER_LAST_NAME),'')
-             )
-           ),'') as customer_name,
-           ORDER_ID,
-           SITE_ID,
-           ORDER_TOTAL,
-           CREATED_DSTAMP
-         from core.ORDER_HEADER
-        where CLIENT_ID=$1
-          and ($2::varchar is null or SITE_ID=$2)
-       ),
-       grouped as (
-         select
-           coalesce(
-             customer_id,
-             lower(email),
-             lower(customer_name) || ':' || coalesce(phone,'')
-           ) as customer_key,
-           max(customer_id) as customer_id,
-           max(email) as email,
-           max(phone) as phone,
-           max(customer_name) as customer_name,
-           count(*)::integer as order_count,
-           coalesce(sum(ORDER_TOTAL),0) as lifetime_value,
-           max(CREATED_DSTAMP) as last_order_at,
-           (array_agg(ORDER_ID order by CREATED_DSTAMP desc))[1] as last_order_id
-         from customer_orders
-        where customer_id is not null
-           or email is not null
-           or customer_name is not null
-        group by coalesce(
-          customer_id,
-          lower(email),
-          lower(customer_name) || ':' || coalesce(phone,'')
-        )
-       )
-       select *
-         from grouped
-        where $3=''
-           or coalesce(customer_id,'') ilike '%' || $3 || '%'
-           or coalesce(email,'') ilike '%' || $3 || '%'
-           or coalesce(phone,'') ilike '%' || $3 || '%'
-           or coalesce(customer_name,'') ilike '%' || $3 || '%'
-        order by last_order_at desc nulls last
-        limit $4 offset $5`,
-      [clientId, siteId, q, limit, offset],
-    );
-
-    return {
-      items: result.rows,
-      limit,
-      offset,
-      siteId,
-      query: q,
-    };
   });
 
   app.get("/api/admin/customers/:customerKey", async (req, reply) => {
-    await requirePermission(req, clientId, "order.read");
+    try {
+      await requirePermission(req, clientId, "order.read");
 
-    const { customerKey } = req.params as { customerKey: string };
-    const query = req.query as { siteId?: string };
-    const siteId = String(query.siteId ?? "").trim() || null;
+      const { customerKey } = req.params as { customerKey: string };
+      const query = req.query as { siteId?: string };
+      const siteId = String(query.siteId ?? "").trim() || null;
 
-    if (siteId) {
-      const allowed = await db.query(
-        `select 1
-           from config.CLIENT_SITE
+      if (siteId) {
+        const allowed = await db.query(
+          `select 1
+             from config.CLIENT_SITE
+            where CLIENT_ID=$1
+              and SITE_ID=$2
+              and ACTIVE=true`,
+          [clientId, siteId],
+        );
+
+        if (!allowed.rowCount)
+          return reply.code(403).send({ error: "SITE_NOT_AUTHORISED" });
+      }
+
+      const orders = await db.query(
+        `select
+            ORDER_ID,
+            SITE_ID,
+            STATUS as ORDER_STATUS,
+            PAYMENT_STATUS,
+            FULFILMENT_STATUS,
+            CUSTOMER_ID,
+            CONTACT_EMAIL as EMAIL,
+            coalesce(
+              nullif(trim(CONTACT_PHONE),''),
+              nullif(trim(CONTACT_MOBILE),'')
+            ) as PHONE,
+            NAME,
+            CONTACT,
+            ORDER_VALUE,
+            ORDER_DATE
+           from core.ORDER_HEADER
           where CLIENT_ID=$1
-            and SITE_ID=$2
-            and ACTIVE=true`,
-        [clientId, siteId],
+            and ($2::varchar is null or SITE_ID=$2)
+            and (
+                 CUSTOMER_ID=$3
+              or lower(coalesce(CONTACT_EMAIL,''))=lower($3)
+              or (
+                   lower(coalesce(
+                     nullif(trim(NAME),''),
+                     nullif(trim(CONTACT),''),
+                     ''
+                   ))
+                   || ':'
+                   || coalesce(
+                     nullif(trim(CONTACT_PHONE),''),
+                     nullif(trim(CONTACT_MOBILE),''),
+                     ''
+                   )
+                 )=lower($3)
+            )
+          order by ORDER_DATE desc`,
+        [clientId, siteId, customerKey],
       );
 
-      if (!allowed.rowCount)
-        return reply.code(403).send({ error: "SITE_NOT_AUTHORISED" });
-    }
+      if (!orders.rowCount)
+        return reply.code(404).send({ error: "CUSTOMER_NOT_FOUND" });
 
-    const orders = await db.query(
-      `select
-          ORDER_ID,
-          SITE_ID,
-          ORDER_STATUS,
-          PAYMENT_STATUS,
-          FULFILMENT_STATUS,
-          CUSTOMER_ID,
-          CUSTOMER_EMAIL,
-          CUSTOMER_PHONE,
-          CUSTOMER_FIRST_NAME,
-          CUSTOMER_LAST_NAME,
-          ORDER_TOTAL,
-          CREATED_DSTAMP
-         from core.ORDER_HEADER
-        where CLIENT_ID=$1
-          and ($2::varchar is null or SITE_ID=$2)
-          and (
-               CUSTOMER_ID=$3
-            or lower(CUSTOMER_EMAIL)=lower($3)
-          )
-        order by CREATED_DSTAMP desc`,
-      [clientId, siteId, customerKey],
-    );
+      const first = orders.rows[0];
 
-    if (!orders.rowCount)
-      return reply.code(404).send({ error: "CUSTOMER_NOT_FOUND" });
-
-    const first = orders.rows[0];
-
-    return {
-      customer: {
+      return {
         customerId: first.customer_id,
-        email: first.customer_email,
-        phone: first.customer_phone,
-        firstName: first.customer_first_name,
-        lastName: first.customer_last_name,
+        email: first.email,
+        phone: first.phone,
+        name: first.name,
+        contact: first.contact,
         orderCount: orders.rowCount,
-      },
-      orders: orders.rows,
-    };
+        orders: orders.rows,
+      };
+    } catch (e) {
+      return sendError(reply, e);
+    }
   });
 
 app.get("/api/admin/inventory",async(req,reply)=>{

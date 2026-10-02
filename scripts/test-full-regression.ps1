@@ -18,8 +18,10 @@ $ErrorActionPreference = 'Stop'
 
 . "$PSScriptRoot\Test-Safety.ps1"
 
-$null = Assert-DyneticNonProductionApi `
-    -BaseUrl $BaseUrl
+if(-not $SkipApi){
+    $null = Assert-DyneticNonProductionApi `
+        -BaseUrl $BaseUrl
+}
 
 . "$PSScriptRoot\environment-common.ps1"
 
@@ -72,6 +74,32 @@ try {
 
     if($LASTEXITCODE -ne 0){
         throw 'API typecheck failed.'
+    }
+}
+finally {
+    Pop-Location
+}
+
+Write-Host ''
+Write-Host '[2b/4] Admin unit/contract regression...'
+
+$adminPath = Join-Path `
+    (Split-Path $PSScriptRoot -Parent) `
+    'apps\admin'
+
+Push-Location $adminPath
+
+try {
+    & npm.cmd test
+
+    if($LASTEXITCODE -ne 0){
+        throw 'Admin unit/contract regression failed.'
+    }
+
+    & npm.cmd run typecheck
+
+    if($LASTEXITCODE -ne 0){
+        throw 'Admin typecheck failed.'
     }
 }
 finally {

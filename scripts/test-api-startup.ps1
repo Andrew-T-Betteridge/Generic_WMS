@@ -171,8 +171,21 @@ try {
         throw "API /health did not become available."
     }
 
-    if ([string]$health.version -ne "0.3.15") {
-        throw "Expected version 0.3.15 from TEST health; got '$($health.version)'."
+    $versionContractPath = Join-Path (Split-Path -Parent $PSScriptRoot) "database\tests\015_dynetic_wms_system_version_test.sql"
+    if (-not (Test-Path $versionContractPath)) {
+        throw "Dedicated system-version regression is missing: $versionContractPath"
+    }
+
+    $versionContractText = [IO.File]::ReadAllText($versionContractPath)
+    $versionContractMatch = [regex]::Match($versionContractText, "VERSION_NUMBER='(\d+\.\d+\.\d+)'")
+
+    if (-not $versionContractMatch.Success) {
+        throw "Could not derive expected DYNETIC WMS version from Test 015."
+    }
+
+    $expectedHealthVersion = $versionContractMatch.Groups[1].Value
+    if ([string]$health.version -ne $expectedHealthVersion) {
+        throw "Expected version $expectedHealthVersion from TEST health; got '$($health.version)'."
     }
 
     if ([string]$health.environment -ne "TEST") {
@@ -200,7 +213,7 @@ try {
         throw "Unauthenticated canonical admin audit route returned HTTP $status; expected exactly 401."
     }
 
-    Write-Host "API STARTUP PASS: Fastify started, TEST health=0.3.15, unauthenticated admin guard HTTP=401."
+    Write-Host "API STARTUP PASS: Fastify started, TEST health=$expectedHealthVersion, unauthenticated admin guard HTTP=401."
 }
 finally {
     if ($process -and -not $process.HasExited) {

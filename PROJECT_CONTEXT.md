@@ -1,9 +1,9 @@
 # DYNETIC Generic WMS - Project Context
 
-**Last updated:** 2026-10-01
-**Current development target:** 0.3.18.1 Admin maintenance on Generic WMS 0.3.18
-**Last reviewed against Git commit:** 43cea21cb621790506b20af42524289e4d297616
-**Status:** Production - Generic WMS 0.3.18 / FINatics Admin 0.3.18.1
+**Last updated:** 2026-10-02
+**Current development target:** 0.3.18.2 reliability maintenance on Generic WMS 0.3.18
+**Last reviewed against Git commit:** 4694e016955d32f4893162f92dd4faf995441917
+**Status:** 0.3.18.2 release prepared; production remains Generic WMS 0.3.18 / FINatics Admin 0.3.18.1 until deployment
 
 > IMPORTANT FOR FUTURE CHATGPT SESSIONS / DEVELOPERS
 >
@@ -11,6 +11,23 @@
 > Compare Last updated and Last reviewed against Git commit with the current repository.
 > If this document is materially older than the current source, treat it as architectural guidance and verify changed implementation against source before modifying anything.
 > Update this document in the same commit whenever architecture, deployment, release state, important workflows, schema conventions, production safety rules or major implementation decisions change.
+
+## 0.3.18.2 reliability maintenance
+
+Prepared 2026-10-02 as maintenance release `dynetic-wms-v0.3.18.2` while the Generic WMS product/system version remains `0.3.18`.
+
+- Admin Orders supports the plural fulfilment-status contract and Customers uses the real ORDER_HEADER customer/contact schema.
+- Admin inventory count sends the canonical absolute-count API contract.
+- Payment expiry now terminalises matching CREATED/PENDING internal payment transactions while preserving provider status.
+- Migration 0042 reconciles historical PAYMENT_EXPIRY orders whose zero-capture payment transaction was left CREATED/PENDING.
+- New CLIENT rows receive a validated default ORDER_PREFIX through the canonical trigger/function contract.
+- Upgrade and fresh-install manifests explicitly reinstall PROCESS_ORDER_INTERFACE, SUBMIT_WEB_ORDER and EXPIRE_PENDING_PAYMENT_ORDERS after migration 0042.
+- PROCESS_ORDER_INTERFACE uses authoritative core.NEXT_ORDER_ID allocation; website orders resolve an active/default operational SITE through CLIENT_SITE.
+- Regression runner executes 37 database regression files, with the FINatics checkout fixture ordered before dependent website tests.
+- Admin regression includes the 0.3.18.2 request-contract tests; TEST API startup validates the current system version rather than a stale hard-coded release.
+- Full pre-release gate passed: environment safety 10/10, API typecheck, Admin 78/78 tests, Admin typecheck, clean TEST bootstrap, database 37/37 and API startup smoke.
+- Production read-only preflight confirmed the pre-0.3.18.2 runtime functions are stale and identified a PAYMENT_EXPIRY order with a historical PENDING payment transaction that migration 0042 will reconcile.
+- Multi-client Admin scope, media management, promotions/gift-card completion and configurable branding remain deferred beyond this maintenance release.
 
 ## 1. Product
 

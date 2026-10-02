@@ -15,6 +15,7 @@ BEGIN
 END
 $dynetic_test_guard$;
 -- DYNETIC_TEST_ENVIRONMENT_GUARD_END
+
 DO $$
 DECLARE
     v_definition TEXT;
@@ -29,17 +30,19 @@ BEGIN
             'FAIL: operational ORDER_ID is still derived by truncating SOURCE_ORDER_ID';
     END IF;
 
-    IF v_definition !~* 'gen_random_uuid\s*\(\s*\)' THEN
+    IF v_definition !~* 'v_order_id\s*:=\s*core\.next_order_id\s*\(\s*v_header\.client_id\s*\)' THEN
         RAISE EXCEPTION
-            'FAIL: PROCESS_ORDER_INTERFACE is not independently generating ORDER_ID';
+            'FAIL: PROCESS_ORDER_INTERFACE is not using the authoritative WMS NEXT_ORDER_ID allocator';
     END IF;
 
-    IF v_definition !~* '''WEB-''\s*\|\|' THEN
+    IF v_definition ~* 'v_order_id\s*:=\s*coalesce'
+       OR v_definition ~* 'nullif\s*\(\s*v_header\.order_id'
+       OR v_definition ~* 'gen_random_uuid\s*\(' THEN
         RAISE EXCEPTION
-            'FAIL: generated website ORDER_ID does not use WEB- prefix';
+            'FAIL: PROCESS_ORDER_INTERFACE contains a legacy external/random ORDER_ID allocation path';
     END IF;
 
     RAISE NOTICE
-        'PASS: website ORDER_ID is independent from the full idempotency/source order ID';
+        'PASS: PROCESS_ORDER_INTERFACE uses authoritative WMS NEXT_ORDER_ID and does not derive operational ORDER_ID from source/interface IDs';
 END
 $$;

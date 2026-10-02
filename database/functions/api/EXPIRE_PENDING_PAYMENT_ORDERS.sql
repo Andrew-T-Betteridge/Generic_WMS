@@ -24,6 +24,19 @@ BEGIN
     LOOP
         SELECT * INTO v_dealloc FROM core.DEALLOCATE_ORDER(p_client_id,r.ORDER_ID);
 
+        -- The order timeout is an authoritative WMS cancellation. Keep the
+        -- internal payment ledger aligned. A later provider webhook can still
+        -- move the transaction to the provider-reported state.
+        UPDATE core.PAYMENT_TRANSACTION
+           SET STATUS='CANCELLED',
+               LAST_EVENT_TYPE=COALESCE(LAST_EVENT_TYPE,'wms.payment_expired'),
+               LAST_EVENT_DSTAMP=now(),
+               LAST_UPDATE_DSTAMP=now()
+         WHERE CLIENT_ID=p_client_id
+           AND REFERENCE_TYPE='ORDER'
+           AND REFERENCE_ID=r.ORDER_ID
+           AND STATUS IN ('CREATED','PENDING');
+
         UPDATE core.ORDER_HEADER
            SET STATUS='CANCELLED',
                PAYMENT_STATUS='CANCELLED',

@@ -104,9 +104,27 @@ Write-Host ""
 foreach ($sql in $files) {
     $relative = $sql.Substring($repoRoot.Length).TrimStart("\")
     Write-Host "Applying: $relative"
-    & $PsqlPath -X -q -P pager=off -v ON_ERROR_STOP=1 -h $HostName -p $Port -U $DbUser -d $Database -o NUL -f $sql
-    if ($LASTEXITCODE -ne 0) {
-        Stop-Bootstrap "psql failed on '$relative'."
+    # PostgreSQL NOTICE/WARNING messages are written to stderr.
+    # Windows PowerShell must not convert those into terminating errors;
+    # the authoritative failure signal remains the psql exit code with
+    # ON_ERROR_STOP=1 enabled.
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+
+    try {
+        $psqlOutput = & $PsqlPath -X -q -P pager=off -v ON_ERROR_STOP=1 -h $HostName -p $Port -U $DbUser -d $Database -o NUL -f $sql 2>&1
+        $psqlExitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+
+    if ($psqlOutput) {
+        $psqlOutput | ForEach-Object { Write-Host $_ }
+    }
+
+    if ($psqlExitCode -ne 0) {
+        Stop-Bootstrap "psql failed on '$relative' with exit code $psqlExitCode."
     }
 }
 

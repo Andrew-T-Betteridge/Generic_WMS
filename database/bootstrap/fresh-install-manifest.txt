@@ -37,3 +37,7 @@ database/migrations/0038_multi_site_order_foundation.sql
 database/migrations/0039_return_refund_idempotency_hardening.sql
 database/migrations/0040_admin_return_case_runtime_privileges.sql
 database/migrations/0041_dynetic_wms_0_3_18.sql
+database/migrations/0042_admin_03182_reliability_repairs.sql
+database/functions/interface/PROCESS_ORDER_INTERFACE.sql
+database/functions/api/SUBMIT_WEB_ORDER.sql
+database/functions/api/EXPIRE_PENDING_PAYMENT_ORDERS.sql
